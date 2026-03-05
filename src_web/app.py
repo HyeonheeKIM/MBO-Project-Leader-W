@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.1"
+__version__ = "2026.03.05.2"
 
 import os
 import sys
@@ -114,9 +114,63 @@ for /d %%D in ("{temp_dir}_MEI*") do rd /s /q "%%D" >nul 2>&1
         # 교체 배치 스크립트 생성
         pid = os.getpid()
         updater_bat = os.path.join(exe_dir, '_updater.bat')
+
+        # 안내 팝업용 HTA 파일 (HTML Application)
+        progress_hta = os.path.join(exe_dir, '_update_progress.hta')
+        hta_content = '''<html>
+<head>
+<title>MBO Project Leader</title>
+<HTA:APPLICATION ID="oApp"
+    APPLICATIONNAME="MBO Updater"
+    BORDER="none"
+    BORDERSTYLE="normal"
+    CAPTION="no"
+    SHOWINTASKBAR="yes"
+    SINGLEINSTANCE="yes"
+    SYSMENU="no"
+    WINDOWSTATE="normal"
+/>
+<style>
+body { font-family:'Segoe UI','Noto Sans KR',sans-serif; background:#f0f4ff;
+       margin:0; display:flex; align-items:center; justify-content:center;
+       height:100%; overflow:hidden; }
+.box { text-align:center; padding:30px 40px; }
+.icon { font-size:36px; margin-bottom:12px; }
+.title { font-size:16px; font-weight:600; color:#1e1b4b; margin-bottom:8px; }
+.sub { font-size:12px; color:#6b7280; }
+.dots { display:inline-block; width:20px; text-align:left; }
+</style>
+<script language="VBScript">
+Sub Window_OnLoad
+    window.resizeTo 340, 180
+    Dim sw, sh
+    sw = window.screen.availWidth
+    sh = window.screen.availHeight
+    window.moveTo (sw - 340) / 2, (sh - 180) / 2
+End Sub
+</script>
+<script language="JavaScript">
+var d = 0;
+setInterval(function(){ d=(d+1)%4; document.getElementById('dots').innerText = Array(d+1).join('.'); }, 400);
+</script>
+</head>
+<body>
+<div class="box">
+    <div class="icon">⏳</div>
+    <div class="title">업데이트 적용 중<span class="dots" id="dots">.</span></div>
+    <div class="sub">잠시만 기다려주세요</div>
+</div>
+</body>
+</html>'''
+
+        with open(progress_hta, 'w', encoding='utf-8') as f:
+            f.write(hta_content)
+
         bat_content = f'''@echo off
 chcp 65001 >nul
-echo MBO Project Leader 업데이트 적용 중...
+
+:: 안내 팝업 표시
+start "" mshta.exe "{progress_hta}"
 
 :: 현재 프로세스(PID {pid}) 종료 대기
 :wait
@@ -136,14 +190,16 @@ if exist "{current_exe}" (
 :: 새 EXE로 교체
 move /Y "{new_exe}" "{current_exe}" >nul 2>&1
 if not exist "{current_exe}" (
-    echo [오류] 업데이트 파일 교체 실패
+    :: 교체 실패 시 롤백
     if exist "{current_exe}.old" move /Y "{current_exe}.old" "{current_exe}" >nul 2>&1
-    pause
+    taskkill /f /im mshta.exe >nul 2>&1
     goto cleanup
 )
 
+:: 안내 팝업 닫기
+taskkill /f /im mshta.exe >nul 2>&1
+
 :: 새 버전 실행
-echo 새 버전을 실행합니다...
 start "" "{current_exe}"
 
 :cleanup
@@ -151,6 +207,7 @@ start "" "{current_exe}"
 timeout /t 3 /nobreak >nul
 if exist "{current_exe}.old" del /f /q "{current_exe}.old" >nul 2>&1
 if exist "{new_exe}" del /f /q "{new_exe}" >nul 2>&1
+if exist "{progress_hta}" del /f /q "{progress_hta}" >nul 2>&1
 del /f /q "%~f0" >nul 2>&1
 exit
 '''
