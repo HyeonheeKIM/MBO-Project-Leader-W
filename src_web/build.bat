@@ -29,7 +29,7 @@ pyinstaller ^
     --noconfirm ^
     --onefile ^
     --windowed ^
-    --name "MBO_Project_Leader_Web" ^
+    --name "MBO_Project_Leader" ^
     --add-data "index.html;." ^
     --add-data "static;static" ^
     --add-data "notification.md;." ^
@@ -48,11 +48,11 @@ if errorlevel 1 (
 echo.
 echo ============================================
 echo   ✅ 빌드 완료!
-echo   EXE 위치: dist\MBO_Project_Leader_Web.exe
+echo   EXE 위치: dist\MBO_Project_Leader.exe
 echo ============================================
 echo.
 echo   사용법:
-echo   1. dist\MBO_Project_Leader_Web.exe 를 원하는 위치에 복사
+echo   1. dist\MBO_Project_Leader.exe 를 원하는 위치에 복사
 echo   2. 더블클릭으로 실행
 echo   3. 네이티브 윈도우에서 MBO 관리 화면이 열립니다
 echo   4. 윈도우를 닫으면 프로그램이 종료됩니다

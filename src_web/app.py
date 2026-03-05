@@ -6,9 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.5"
-
-# 업데이트 기능을 확인하고자 합니다.
+__version__ = "2026.03.05.6"
 
 import os
 import sys
@@ -22,7 +20,7 @@ import subprocess
 import webview
 
 # ============================================================
-# GitHub Auto-Update
+# GitHub 자동 업데이트
 # ============================================================
 GITHUB_REPO = "HyeonheeKIM/MBO-Project-Leader-W"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -56,7 +54,7 @@ def check_update():
                 if asset['name'] == EXE_ASSET_NAME:
                     download_url = asset['browser_download_url']
                     break
-            # 정확한 이름 매칭 실패 시 .exe 에셋 중 첫 번째 사용
+            # 정확한 이름 매칭 실패 시 fallback
             if not download_url:
                 for asset in data.get('assets', []):
                     if asset['name'].lower().endswith('.exe'):
@@ -76,8 +74,8 @@ def check_update():
 
 
 def download_and_apply_update(download_url):
-    """새 EXE를 다운로드하고 교체 배치 스크립트를 실행한 뒤 현재 앱 종료."""
-    import urllib.request
+    """_updater.bat을 생성하고 실행한 뒤 현재 앱을 종료한다.
+    BAT이 다운로드·교체·새 EXE 실행을 모두 담당한다."""
 
     if not getattr(sys, 'frozen', False):
         return {'success': False, 'error': '개발 환경에서는 자동 업데이트가 지원되지 않습니다.'}
@@ -85,151 +83,147 @@ def download_and_apply_update(download_url):
     current_exe = sys.executable
     exe_dir = os.path.dirname(current_exe)
     exe_name = os.path.basename(current_exe)
-    new_exe = os.path.join(exe_dir, f"{exe_name}.update")
+    new_exe_temp = os.path.join(exe_dir, '_new_update.exe')
+    pid = os.getpid()
+
+    # _MEI 임시 폴더 정리 명령
+    temp_dir = os.environ.get('TEMP', '')
+    mei_cleanup = ''
+    if temp_dir:
+        mei_cleanup = f'for /d %%D in ("{temp_dir}\\_MEI*") do rd /s /q "%%D" >nul 2>&1'
 
     try:
-        # 다운로드
-        req = urllib.request.Request(
-            download_url,
-            headers={'User-Agent': 'MBO-Project-Leader-Updater'}
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            total_size = 0
-            with open(new_exe, 'wb') as f:
-                while True:
-                    chunk = resp.read(1024 * 256)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    total_size += len(chunk)
-
-        # 다운로드 무결성 검증 (최소 5MB 이상이어야 유효한 EXE)
-        actual_size = os.path.getsize(new_exe)
-        if actual_size < 5 * 1024 * 1024:
-            os.remove(new_exe)
-            return {'success': False,
-                    'error': f'다운로드된 파일 크기가 너무 작습니다 ({actual_size:,} bytes). 네트워크 오류로 다운로드가 불완전합니다.'}
-
-        # _MEI 임시 폴더 정리 (PyInstaller onefile 추출 잔여물)
-        temp_dir = os.path.join(os.environ.get('TEMP', ''), '')
-        mei_cleanup = ''
-        if temp_dir:
-            mei_cleanup = f'''
-:: PyInstaller _MEI 임시 폴더 정리
-for /d %%D in ("{temp_dir}_MEI*") do rd /s /q "%%D" >nul 2>&1
-'''
-
-        # 교체 배치 스크립트 생성
-        pid = os.getpid()
         updater_bat = os.path.join(exe_dir, '_updater.bat')
-
-        # 안내 팝업용 HTA 파일 (HTML Application)
         progress_hta = os.path.join(exe_dir, '_update_progress.hta')
+
+        # ── 안내 팝업 HTA ──
         hta_content = '''<html>
 <head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <title>MBO Project Leader</title>
 <HTA:APPLICATION ID="oApp"
     APPLICATIONNAME="MBO Updater"
-    BORDER="none"
-    BORDERSTYLE="normal"
-    CAPTION="no"
-    SHOWINTASKBAR="yes"
-    SINGLEINSTANCE="yes"
-    SYSMENU="no"
+    BORDER="none" BORDERSTYLE="normal" CAPTION="no"
+    SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" SYSMENU="no"
     WINDOWSTATE="normal"
 />
 <style>
-body { font-family:'Segoe UI','Noto Sans KR',sans-serif; background:#f0f4ff;
-       margin:0; display:flex; align-items:center; justify-content:center;
-       height:100%; overflow:hidden; }
-.box { text-align:center; padding:30px 40px; }
-.icon { font-size:36px; margin-bottom:12px; }
-.title { font-size:16px; font-weight:600; color:#1e1b4b; margin-bottom:8px; }
-.sub { font-size:12px; color:#6b7280; }
-.dots { display:inline-block; width:20px; text-align:left; }
+body{font-family:'Segoe UI','Malgun Gothic',sans-serif;background:#f0f4ff;
+margin:0;display:flex;align-items:center;justify-content:center;height:100%;overflow:hidden}
+.box{text-align:center;padding:30px 40px}
+.icon{font-size:36px;margin-bottom:12px}
+.title{font-size:16px;font-weight:600;color:#1e1b4b;margin-bottom:8px}
+.sub{font-size:12px;color:#6b7280}
+.dots{display:inline-block;width:20px;text-align:left}
 </style>
 <script language="VBScript">
 Sub Window_OnLoad
-    window.resizeTo 340, 180
-    Dim sw, sh
-    sw = window.screen.availWidth
-    sh = window.screen.availHeight
-    window.moveTo (sw - 340) / 2, (sh - 180) / 2
+    window.resizeTo 360,180
+    window.moveTo (window.screen.availWidth-360)/2,(window.screen.availHeight-180)/2
 End Sub
 </script>
 <script language="JavaScript">
-var d = 0;
-setInterval(function(){ d=(d+1)%4; document.getElementById('dots').innerText = Array(d+1).join('.'); }, 400);
+var d=0;setInterval(function(){d=(d+1)%4;document.getElementById('dots').innerText=Array(d+1).join('.');},400);
 </script>
 </head>
 <body>
 <div class="box">
-    <div class="icon">⏳</div>
-    <div class="title">업데이트 적용 중<span class="dots" id="dots">.</span></div>
-    <div class="sub">잠시만 기다려주세요</div>
+<div class="icon">&#9203;</div>
+<div class="title">&#50629;&#45936;&#51060;&#53944; &#51201;&#50857; &#51473;<span class="dots" id="dots">.</span></div>
+<div class="sub">&#51104;&#49884;&#47564; &#44592;&#45796;&#47140;&#51452;&#49464;&#50836;</div>
 </div>
 </body>
 </html>'''
-
-        with open(progress_hta, 'w', encoding='utf-8') as f:
+        with open(progress_hta, 'w', encoding='utf-8-sig') as f:
             f.write(hta_content)
 
+        # ── _updater.bat ──
+        # BAT이 다운로드 → old 삭제 → new 실행까지 전부 담당
         bat_content = f'''@echo off
 chcp 65001 >nul
 
-:: 안내 팝업 표시
+:: ─── 안내 팝업 ───
 start "" mshta.exe "{progress_hta}"
 
-:: 현재 프로세스(PID {pid}) 종료 대기
-:wait
+:: ─── old.exe(PID {pid}) 종료 대기 ───
+:wait_old
 timeout /t 1 /nobreak >nul
 tasklist /FI "PID eq {pid}" /NH 2>nul | find /i "{exe_name}" >nul
-if not errorlevel 1 goto wait
-
-:: 추가 대기 (파일 잠금 해제)
+if not errorlevel 1 goto wait_old
 timeout /t 2 /nobreak >nul
+
+:: ─── _MEI 임시 폴더 정리 ───
 {mei_cleanup}
-:: 기존 EXE 제거
-if exist "{current_exe}.old" del /f /q "{current_exe}.old" >nul 2>&1
-if exist "{current_exe}" (
-    move /Y "{current_exe}" "{current_exe}.old" >nul 2>&1
-)
+timeout /t 1 /nobreak >nul
 
-:: 새 EXE로 교체
-move /Y "{new_exe}" "{current_exe}" >nul 2>&1
-if not exist "{current_exe}" (
-    :: 교체 실패 시 롤백
-    if exist "{current_exe}.old" move /Y "{current_exe}.old" "{current_exe}" >nul 2>&1
+:: ─── 새 EXE 다운로드 (PowerShell) ───
+powershell -NoProfile -Command "try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 120 }} catch {{ exit 1 }}"
+if errorlevel 1 (
     taskkill /f /im mshta.exe >nul 2>&1
-    goto cleanup
+    echo [오류] 다운로드 실패
+    if exist "{new_exe_temp}" del /f /q "{new_exe_temp}" >nul 2>&1
+    pause
+    goto end
 )
 
-:: 안내 팝업 닫기
-taskkill /f /im mshta.exe >nul 2>&1
+:: ─── 다운로드 검증 (5MB 이상) ───
+for %%F in ("{new_exe_temp}") do set FSIZE=%%~zF
+if %FSIZE% LSS 5242880 (
+    taskkill /f /im mshta.exe >nul 2>&1
+    echo [오류] 다운로드 파일 손상 (크기: %FSIZE% bytes)
+    del /f /q "{new_exe_temp}" >nul 2>&1
+    pause
+    goto end
+)
 
-:: 새 버전 실행
+:: ─── old.exe 삭제 ───
+del /f /q "{current_exe}" >nul 2>&1
+if exist "{current_exe}" (
+    timeout /t 2 /nobreak >nul
+    del /f /q "{current_exe}" >nul 2>&1
+)
+
+:: ─── new.exe → 원래 이름으로 이동 ───
+move /Y "{new_exe_temp}" "{current_exe}" >nul 2>&1
+if not exist "{current_exe}" (
+    taskkill /f /im mshta.exe >nul 2>&1
+    echo [오류] 파일 교체 실패
+    pause
+    goto end
+)
+
+:: ─── 새 버전 실행 ───
 start "" "{current_exe}"
 
-:cleanup
-:: 임시 파일 정리
-timeout /t 3 /nobreak >nul
-if exist "{current_exe}.old" del /f /q "{current_exe}.old" >nul 2>&1
-if exist "{new_exe}" del /f /q "{new_exe}" >nul 2>&1
-if exist "{progress_hta}" del /f /q "{progress_hta}" >nul 2>&1
-del /f /q "%~f0" >nul 2>&1
+:: ─── 새 EXE 프로세스 확인 대기 (최대 30초) ───
+set /a _wc=0
+:wait_new
+timeout /t 1 /nobreak >nul
+tasklist /NH 2>nul | find /i "{exe_name}" >nul
+if errorlevel 1 (
+    set /a _wc+=1
+    if %_wc% lss 30 goto wait_new
+)
+
+:: ─── 새 프로그램 실행 확인 후 2초 대기, 팝업 닫기 ───
+timeout /t 2 /nobreak >nul
+taskkill /f /im mshta.exe >nul 2>&1
+
+:end
+:: _updater.bat과 HTA는 new.exe가 3초 후 자동 삭제함
 exit
 '''
         with open(updater_bat, 'w', encoding='utf-8') as f:
             f.write(bat_content)
 
-        # 배치 실행
+        # BAT 실행
         subprocess.Popen(
             ['cmd', '/c', updater_bat],
             creationflags=subprocess.CREATE_NO_WINDOW,
             cwd=exe_dir,
         )
 
-        # 앱 종료
+        # 현재 앱 종료
         def _exit():
             import time
             time.sleep(0.5)
@@ -243,21 +237,15 @@ exit
         threading.Thread(target=_exit, daemon=True).start()
         return {'success': True}
     except Exception as e:
-        # 실패 시 임시 파일 정리
-        if os.path.exists(new_exe):
-            try:
-                os.remove(new_exe)
-            except Exception:
-                pass
         return {'success': False, 'error': str(e)}
 
-# Windows: set AppUserModelID so the taskbar shows our icon, not Python's
+# Windows: AppUserModelID 설정
 if sys.platform == 'win32':
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('mbo.project.leader.app')
 
 # ============================================================
-# Paths
+# 경로 설정
 # ============================================================
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -270,7 +258,7 @@ DB_PATH = os.path.join(BASE_DIR, "mbo_project_leader.db")
 
 
 # ============================================================
-# Database
+# 데이터베이스
 # ============================================================
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -323,7 +311,7 @@ def init_db():
     """)
     now_year = datetime.now().year
     conn.execute("INSERT OR IGNORE INTO years (year) VALUES (?)", (now_year,))
-    # Migration: add difficulty column if missing
+    # Migration: difficulty 칼럼 추가
     cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
     if "difficulty" not in cols:
         conn.execute("ALTER TABLE projects ADD COLUMN difficulty TEXT DEFAULT '보통'")
@@ -331,14 +319,14 @@ def init_db():
         conn.execute("ALTER TABLE projects ADD COLUMN target_value TEXT DEFAULT ''")
     if "actual_value" not in cols:
         conn.execute("ALTER TABLE projects ADD COLUMN actual_value TEXT DEFAULT ''")
-    # Settings table for app preferences (notification read hash, etc.)
+    # 앱 설정 테이블
     conn.execute("""
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
             value TEXT DEFAULT ''
         )
     """)
-    # Recurring tasks template
+    # 반복 태스크 템플릿
     conn.execute("""
         CREATE TABLE IF NOT EXISTS recurring_tasks (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -355,12 +343,12 @@ def init_db():
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     """)
-    # Migration: add end_date to recurring_tasks if missing
+    # Migration: end_date 칼럼 추가
     rt_cols = [r[1] for r in conn.execute("PRAGMA table_info(recurring_tasks)").fetchall()]
     if "end_date" not in rt_cols:
         conn.execute("ALTER TABLE recurring_tasks ADD COLUMN end_date TEXT DEFAULT ''")
 
-    # Task comments / memos
+    # 태스크 댓글
     conn.execute("""
         CREATE TABLE IF NOT EXISTS task_comments (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,7 +374,7 @@ def dict_rows(rows):
 
 
 # ============================================================
-# Markdown → HTML (minimal converter)
+# Markdown → HTML 변환
 # ============================================================
 def _md_to_html(md_text):
     """Minimal Markdown → HTML converter (no dependencies)."""
@@ -451,7 +439,7 @@ def _md_to_html(md_text):
 
 
 # ============================================================
-# pywebview API Class
+# pywebview API 클래스
 # ============================================================
 class Api:
     """JavaScript에서 window.pywebview.api.method_name() 으로 호출"""
@@ -766,7 +754,7 @@ class Api:
             for pl in plans:
                 plan_map[str(pl['month'])] = pl
 
-            # Find current month milestone
+            # 현재 월 마일스톤
             now_month = datetime.now().month
             cur_month_plan = plan_map.get(str(now_month), {})
             current_month_milestone = ''
@@ -796,17 +784,15 @@ class Api:
         if year is None:
             year = datetime.now().year
         today = date.today()
-        week_start = today - timedelta(days=today.weekday())  # Monday
+        week_start = today - timedelta(days=today.weekday())
         week_end = week_start + timedelta(days=6)
         conn = get_db()
-        # Tasks this week
         rows = conn.execute(
             "SELECT dt.* FROM daily_tasks dt JOIN projects p ON dt.project_id=p.id "
             "WHERE p.year=? AND dt.task_date BETWEEN ? AND ?",
             (year, week_start.isoformat(), week_end.isoformat())).fetchall()
         week_total = len(rows)
         week_done = sum(1 for r in rows if r['is_done'])
-        # Current month milestones
         month = today.month
         plans = dict_rows(conn.execute(
             "SELECT mp.*, p.name as project_name FROM monthly_plans mp "
@@ -841,7 +827,6 @@ class Api:
 
         alerts = []
         for pl in plans:
-            # Month end date
             m = pl['month']
             if m < current_month:
                 continue
@@ -942,10 +927,9 @@ class Api:
 
     def delete_recurring_task(self, rid):
         conn = get_db()
-        # Get template info before deleting
+        # 템플릿 정보 조회 후 삭제
         tpl = conn.execute("SELECT * FROM recurring_tasks WHERE id=?", (rid,)).fetchone()
         if tpl:
-            # Delete all undone daily_tasks generated from this template
             conn.execute(
                 "DELETE FROM daily_tasks WHERE project_id=? AND title=? AND is_done=0",
                 (tpl['project_id'], tpl['title']))
@@ -966,24 +950,22 @@ class Api:
             return {'error': '반복 태스크를 찾을 수 없습니다.'}
         old_title = old['title']
         pid = old['project_id']
-        # Update template
         conn.execute(
             "UPDATE recurring_tasks SET title=?,description=?,priority=?,frequency=?,day_of_week=?,day_of_month=?,end_date=? WHERE id=?",
             (new_title, data.get('description', ''), data.get('priority', 1),
              data.get('frequency', 'weekly'), data.get('day_of_week', 1),
              data.get('day_of_month', 1), data.get('end_date', ''), rid))
-        # Sync undone daily_tasks: update title/description/priority
+        # 미완료 태스크 동기화
         conn.execute(
             "UPDATE daily_tasks SET title=?,description=?,priority=? WHERE project_id=? AND title=? AND is_done=0",
             (new_title, data.get('description', ''), data.get('priority', 1), pid, old_title))
-        # If frequency/day changed, remove old undone tasks that no longer match the new schedule
+        # 주기/요일 변경 시 불일치 태스크 제거
         old_freq = old['frequency']
         new_freq = data.get('frequency', 'weekly')
         freq_changed = (old_freq != new_freq
                         or (new_freq == 'weekly' and old['day_of_week'] != data.get('day_of_week', 1))
                         or (new_freq == 'monthly' and old['day_of_month'] != data.get('day_of_month', 1)))
         if freq_changed:
-            # Delete undone tasks with the new title that don't match new schedule
             undone = dict_rows(conn.execute(
                 "SELECT id, task_date FROM daily_tasks WHERE project_id=? AND title=? AND is_done=0",
                 (pid, new_title)).fetchall())
@@ -1008,7 +990,7 @@ class Api:
         if target_date is None:
             target_date = date.today().isoformat()
         d = date.fromisoformat(target_date)
-        dow = d.weekday()  # 0=Mon
+        dow = d.weekday()
         dom = d.day
         conn = get_db()
         templates = dict_rows(conn.execute(
@@ -1016,7 +998,6 @@ class Api:
             (project_id,)).fetchall())
         created = 0
         for t in templates:
-            # Check end_date
             if t.get('end_date') and t['end_date'] < target_date:
                 continue
             match = False
@@ -1085,7 +1066,7 @@ class Api:
             (target_year, src['name'], src['description'], src['kpi'],
              src['weight'], src['priority'], src['difficulty'], '대기'))
         new_pid = cur.lastrowid
-        # Clone monthly plans
+        # 월별 계획 복제
         plans = conn.execute(
             "SELECT * FROM monthly_plans WHERE project_id=?",
             (source_pid,)).fetchall()
@@ -1094,7 +1075,7 @@ class Api:
                 "INSERT INTO monthly_plans (project_id,month,milestone,target,status,note) "
                 "VALUES (?,?,?,?,?,?)",
                 (new_pid, pl['month'], pl['milestone'], pl['target'], '미완료', pl['note']))
-        # Clone recurring tasks
+        # 반복 태스크 복제
         recs = conn.execute(
             "SELECT * FROM recurring_tasks WHERE project_id=?",
             (source_pid,)).fetchall()
@@ -1120,7 +1101,6 @@ class Api:
             "SELECT * FROM projects WHERE year=? ORDER BY priority DESC",
             (year,)).fetchall())
         lines = []
-        # CSV header
         lines.append('프로젝트,상태,가중치,중요도,난이도,Target,실적,태스크총수,태스크완료,달성률,월별달성률')
         for p in projects:
             t = conn.execute("SELECT COUNT(*) c FROM daily_tasks WHERE project_id=?",
@@ -1136,7 +1116,6 @@ class Api:
             mp = round(comp_m / total_m * 100)
             line = f"{p['name']},{p['status']},{p['weight']},{p['priority']},{p['difficulty']},{p.get('target_value','')},{p.get('actual_value','')},{t},{d},{tp}%,{mp}%"
             lines.append(line)
-        # Monthly detail
         lines.append('')
         lines.append('프로젝트,월,마일스톤,상태,목표')
         for p in projects:
@@ -1213,7 +1192,7 @@ class Api:
         updated = ''
         source = 'none'
 
-        # 1) GitHub에서 원격 로딩 시도 (캐시 우회를 위해 타임스탬프 쿼리 추가)
+        # GitHub 원격 로딩 (캐시 우회)
         try:
             import time as _time
             cache_bust_url = f"{GITHUB_NOTIFICATION_URL}?t={int(_time.time())}"
@@ -1244,7 +1223,7 @@ class Api:
             return {'raw': '', 'html': '', 'updated': '', 'hash': ''}
 
         content_hash = hashlib.md5(raw.strip().encode('utf-8')).hexdigest()
-        # Check if already read (from DB)
+        # DB에서 읽음 여부 확인
         conn = get_db()
         row = conn.execute("SELECT value FROM app_settings WHERE key='notification_read_hash'").fetchone()
         read_hash = row['value'] if row else ''
@@ -1276,7 +1255,7 @@ class Api:
 
 
 # ============================================================
-# Entry Point
+# 엔트리 포인트
 # ============================================================
 def _set_window_icon(icon_path):
     """Set window and taskbar icon via Win32 API (pywebview workaround)."""
@@ -1288,7 +1267,6 @@ def _set_window_icon(icon_path):
         user32 = ctypes.windll.user32
         shell32 = ctypes.windll.shell32
 
-        # Load icon from .ico file
         IMAGE_ICON = 1
         LR_LOADFROMFILE = 0x0010
         LR_DEFAULTSIZE = 0x0040
@@ -1298,7 +1276,6 @@ def _set_window_icon(icon_path):
         if not hicon_big:
             return
 
-        # Find the pywebview window by title
         import time
         time.sleep(0.5)
         hwnd = user32.FindWindowW(None, webview.windows[0].title)
@@ -1314,12 +1291,28 @@ def _set_window_icon(icon_path):
         pass
 
 
+def _cleanup_update_files():
+    """앱 시작 3초 후 업데이트 임시 파일(_updater.bat, _update_progress.hta, _new_update.exe) 삭제"""
+    import time
+    time.sleep(3)
+    for fname in ['_updater.bat', '_update_progress.hta', '_new_update.exe']:
+        fpath = os.path.join(BASE_DIR, fname)
+        try:
+            if os.path.exists(fpath):
+                os.remove(fpath)
+        except Exception:
+            pass
+
+
 def main():
     init_db()
     api = Api()
     html_path = os.path.join(APP_DIR, 'index.html')
     icon_path = os.path.abspath(os.path.join(APP_DIR, 'app_icon.ico'))
     icon = icon_path if os.path.exists(icon_path) else None
+
+    # 업데이트 임시 파일 정리 (시작 3초 후)
+    threading.Thread(target=_cleanup_update_files, daemon=True).start()
 
     window = webview.create_window(
         f'MBO Project Leader v{__version__}',
@@ -1330,7 +1323,6 @@ def main():
         min_size=(800, 600),
     )
 
-    import threading
     if icon:
         threading.Thread(target=_set_window_icon, args=(icon,), daemon=True).start()
 

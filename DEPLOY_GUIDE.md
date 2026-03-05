@@ -34,11 +34,10 @@ git branch -M main
 git push -u origin main
 ```
 
-### 2단계: `Project_Leader.py` 상단의 GitHub 정보 수정
+### 2단계: `app.py` 상단의 GitHub 정보 확인
 
 ```python
-GITHUB_OWNER = "HyeonheeKIM"            # ← GitHub 사용자명
-GITHUB_REPO  = "MBO-Project-Leader-W"   # ← 저장소 이름
+GITHUB_REPO = "HyeonheeKIM/MBO-Project-Leader-W"   # ← GitHub 저장소
 ```
 
 ### 3단계 : 커밋
@@ -74,9 +73,6 @@ src 폴더에서 build.bat 더블클릭
 ```
 
 `MBO_Project_Leader.exe` 파일을 전달하면 끝!
-- Python 설치 불필요
-- 더블클릭만으로 실행
-- DB 파일은 EXE와 같은 폴더에 자동 생성
 
 ---
 
@@ -127,7 +123,7 @@ git push origin main --tags
 
 ```
 src_web 폴더에서 build.bat 더블클릭
-→ dist\MBO_Project_Leader_Web.exe 생성
+→ dist\MBO_Project_Leader.exe 생성
 ```
 
 ---
@@ -150,7 +146,7 @@ src_web 폴더에서 build.bat 더블클릭
 
 ## 📥 사용자 배포
 
-1. GitHub Release 페이지에서 최신 `MBO_Project_Leader_Web.exe`를 다운로드
+1. GitHub Release 페이지에서 최신 `MBO_Project_Leader.exe`를 다운로드
 2. 원하는 폴더에 저장
 3. 더블클릭으로 실행
 

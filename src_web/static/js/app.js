@@ -38,8 +38,8 @@ const MILESTONE_COLORS = {
 };
 
 // ===== Priority → Background Color =====
+// 5=red(high) → 1=white(low)
 function priorityBgColor(priority) {
-    // 5=red(high) → 1=white(low)
     const colors = {
         5: 'rgba(239,68,68,0.22)',
         4: 'rgba(249,115,22,0.18)',
@@ -82,7 +82,6 @@ const _spinnerLabels = {
     get_weekly_trend: '트렌드 분석 중...',
     get_project_comparison: '비교 분석 중...',
 };
-// Quick reads that shouldn't show a spinner
 const _spinnerSkip = new Set([
     'get_years', 'get_setting', 'set_setting',
     'get_current_milestone', 'get_notification',
@@ -98,11 +97,11 @@ function showSpinner(text) {
         const overlay = document.getElementById('spinnerOverlay');
         const label = document.getElementById('spinnerText');
         if (overlay) { label.textContent = text || '처리 중...'; overlay.classList.add('active'); }
-    }, 200); // 200ms delay to avoid flash on fast operations
+    }, 200);
 }
 function hideSpinner() {
     _spinnerCount = Math.max(0, _spinnerCount - 1);
-    if (_spinnerCount > 0) return; // other calls still pending
+    if (_spinnerCount > 0) return;
     if (_spinnerTimer) { clearTimeout(_spinnerTimer); _spinnerTimer = null; }
     const overlay = document.getElementById('spinnerOverlay');
     if (overlay) overlay.classList.remove('active');
@@ -149,12 +148,10 @@ function closeModal() {
 async function navigate(page) {
     state.currentPage = page;
 
-    // Update sidebar active state
     document.querySelectorAll('.nav-item').forEach(el => {
         el.classList.toggle('active', el.dataset.page === page);
     });
 
-    // Load years
     try {
         state.years = await callApi('get_years');
         if (state.years.length > 0 && !state.years.includes(state.currentYear)) {
@@ -162,7 +159,6 @@ async function navigate(page) {
         }
     } catch (e) { console.error(e); }
 
-    // Render page
     const main = document.getElementById('mainContent');
     switch (page) {
         case 'dashboard': await renderDashboard(main); break;
@@ -572,10 +568,7 @@ async function renderDaily(main) {
             state.selectedProjectId = projects[0].id;
         }
 
-        // Auto-generate recurring tasks for selected date
         await generateRecurring();
-
-        // Also generate recurring tasks for all dates in the visible calendar month
         await generateRecurringForMonth(state.calendarYear, state.calendarMonth);
 
         const sd = new Date(state.selectedDate);
@@ -587,7 +580,6 @@ async function renderDaily(main) {
             callApi('get_current_milestone', state.selectedProjectId, state.currentYear, selMonth),
         ]);
 
-        // Get comment counts for tasks
         const commentCounts = {};
         await Promise.all(tasks.map(async t => {
             try {
@@ -654,7 +646,7 @@ async function renderDaily(main) {
 function renderCalendar(year, month, selectedDate, taskDates) {
     const today = new Date().toISOString().split('T')[0];
     const daysInMonth = new Date(year, month, 0).getDate();
-    const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
+    const firstDay = new Date(year, month - 1, 1).getDay();
     const dayNames = ['일','월','화','수','목','금','토'];
 
     let html = `<div class="calendar-header">
@@ -663,18 +655,15 @@ function renderCalendar(year, month, selectedDate, taskDates) {
         <button class="cal-nav-btn" onclick="changeCalMonth(1)">▶</button>
     </div><div class="calendar-grid">`;
 
-    // Day headers
     dayNames.forEach((dn, i) => {
         const cls = i === 0 ? 'sun' : i === 6 ? 'sat' : '';
         html += `<div class="cal-day-header ${cls}">${dn}</div>`;
     });
 
-    // Empty cells
     for (let i = 0; i < firstDay; i++) {
         html += `<div class="cal-day empty"></div>`;
     }
 
-    // Days
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const isToday = dateStr === today;
@@ -901,7 +890,6 @@ async function renderGantt(main) {
         const curYear = new Date().getFullYear();
         const isCurrentYear = state.currentYear === curYear;
 
-        // Build legend from MILESTONE_COLORS
         const legendItems = Object.entries(MILESTONE_COLORS).map(([ms, color]) =>
             `<div class="gantt-legend-item"><span class="gantt-legend-dot" style="background:${color}"></span>${ms}</div>`
         ).join('');
@@ -931,7 +919,6 @@ async function renderGantt(main) {
 }
 
 function renderGanttRow(p, curMonth, isCurrentYear) {
-    // Build spans: merge adjacent months with same milestone
     const cells = [];
     for (let m = 1; m <= 12; m++) {
         const plan = p.monthly_plans[String(m)] || {};
@@ -943,7 +930,6 @@ function renderGanttRow(p, curMonth, isCurrentYear) {
         });
     }
 
-    // Merge consecutive same-milestone cells
     const spans = [];
     let i = 0;
     while (i < 12) {
@@ -961,21 +947,17 @@ function renderGanttRow(p, curMonth, isCurrentYear) {
         }
     }
 
-    // Now render <td> elements
     let tds = '';
     for (const s of spans) {
         const isCur = isCurrentYear && curMonth >= s.cells[0].month && curMonth <= s.cells[s.cells.length - 1].month;
         if (s.milestone) {
             const color = MILESTONE_COLORS[s.milestone] || '#888';
-            // Check if any cell in range is 완료
             const allDone = s.cells.every(c => c.status === '완료');
             const anyInProgress = s.cells.some(c => c.status === '진행중');
             const opacity = allDone ? '1' : anyInProgress ? '0.8' : '0.55';
-            const curLineHtml = '';
             tds += `<td colspan="${s.span}">
                 <div class="gantt-bar-merged" style="background:${color};opacity:${opacity}" onclick="ganttCellClick(${p.id},${s.cells[0].month})">
                     ${s.milestone}${s.span > 1 ? ` (${s.cells[0].month}-${s.cells[s.cells.length-1].month}월)` : ''}
-                    ${curLineHtml}
                 </div>
             </td>`;
         } else {
@@ -1522,12 +1504,12 @@ function showUpdateDialog(info) {
 }
 
 async function doUpdate(downloadUrl) {
-    // 모달 내용을 다운로드 진행 상태로 변경
+    // 모달 내용을 업데이트 준비 상태로 변경
     document.getElementById('modalBody').innerHTML = `
         <div style="text-align:center;padding:30px 0">
             <div class="spinner-ring" style="margin:0 auto 16px"></div>
-            <div style="font-size:15px;font-weight:500">업데이트 다운로드 중...</div>
-            <div style="font-size:12px;color:var(--text-dark);margin-top:8px">완료 후 자동으로 재시작됩니다.</div>
+            <div style="font-size:15px;font-weight:500">업데이트 준비 중...</div>
+            <div style="font-size:12px;color:var(--text-dark);margin-top:8px">잠시 후 앱이 종료되고 업데이트가 진행됩니다.</div>
         </div>
     `;
     try {
@@ -1535,9 +1517,9 @@ async function doUpdate(downloadUrl) {
         if (result && result.success) {
             document.getElementById('modalBody').innerHTML = `
                 <div style="text-align:center;padding:30px 0">
-                    <div style="font-size:48px;margin-bottom:12px">✅</div>
-                    <div style="font-size:15px;font-weight:500">업데이트 완료!</div>
-                    <div style="font-size:12px;color:var(--text-dark);margin-top:8px">앱이 곧 재시작됩니다...</div>
+                    <div style="font-size:48px;margin-bottom:12px">&#x1F504;</div>
+                    <div style="font-size:15px;font-weight:500">업데이트를 진행합니다</div>
+                    <div style="font-size:12px;color:var(--text-dark);margin-top:8px">앱이 곧 종료되고 새 버전이 자동으로 실행됩니다.</div>
                 </div>
             `;
         } else {
