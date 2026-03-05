@@ -6,9 +6,9 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.3"
+__version__ = "2026.03.05.4"
 
-# 업데이트 확인용
+#
 
 import os
 import sys
@@ -50,12 +50,18 @@ def check_update():
         remote_tag = data.get('tag_name', '')
         remote_ver = remote_tag.lstrip('v')
         if _parse_version(remote_ver) > _parse_version(__version__):
-            # 다운로드 URL 찾기
+            # 다운로드 URL 찾기 (이름이 바뀔 수 있으므로 .exe 에셋 중 첫 번째를 사용)
             download_url = ''
             for asset in data.get('assets', []):
                 if asset['name'] == EXE_ASSET_NAME:
                     download_url = asset['browser_download_url']
                     break
+            # 정확한 이름 매칭 실패 시 .exe 에셋 중 첫 번째 사용
+            if not download_url:
+                for asset in data.get('assets', []):
+                    if asset['name'].lower().endswith('.exe'):
+                        download_url = asset['browser_download_url']
+                        break
             return {
                 'available': True,
                 'current': __version__,

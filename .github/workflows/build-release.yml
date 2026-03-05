@@ -32,7 +32,7 @@ jobs:
             --noconfirm `
             --onefile `
             --windowed `
-            --name "MBO_Project_Leader_Web" `
+            --name "MBO_Project_Leader" `
             --icon "app_icon.ico" `
             --add-data "index.html;." `
             --add-data "static;static" `
@@ -57,13 +57,13 @@ jobs:
             ## MBO Project Leader Web - ${{ steps.version.outputs.VERSION }}
 
             ### 사용법
-            1. `MBO_Project_Leader_Web.exe` 를 다운로드합니다
+            1. `MBO_Project_Leader.exe` 를 다운로드합니다
             2. 원하는 폴더에 저장합니다
             3. 더블클릭으로 실행합니다
 
             > DB 파일(mbo_project_leader.db)은 EXE와 같은 폴더에 자동 생성됩니다.
             > 업데이트 시 EXE만 덮어쓰면 데이터가 유지됩니다.
           files: |
-            src_web/dist/MBO_Project_Leader_Web.exe
+            src_web/dist/MBO_Project_Leader.exe
           draft: false
           prerelease: false
