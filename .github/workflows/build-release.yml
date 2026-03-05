@@ -1,0 +1,69 @@
+name: Build & Release EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pywebview pyinstaller
+
+      - name: Build EXE
+        working-directory: src_web
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --onefile `
+            --windowed `
+            --name "MBO_Project_Leader_Web" `
+            --icon "app_icon.ico" `
+            --add-data "index.html;." `
+            --add-data "static;static" `
+            --add-data "app_icon.ico;." `
+            --add-data "notification.md;." `
+            --hidden-import "webview" `
+            --hidden-import "sqlite3" `
+            --hidden-import "clr" `
+            app.py
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: "MBO Project Leader Web ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## MBO Project Leader Web - ${{ steps.version.outputs.VERSION }}
+
+            ### 사용법
+            1. `MBO_Project_Leader_Web.exe` 를 다운로드합니다
+            2. 원하는 폴더에 저장합니다
+            3. 더블클릭으로 실행합니다
+
+            > DB 파일(mbo_project_leader.db)은 EXE와 같은 폴더에 자동 생성됩니다.
+            > 업데이트 시 EXE만 덮어쓰면 데이터가 유지됩니다.
+          files: |
+            src_web/dist/MBO_Project_Leader_Web.exe
+          draft: false
+          prerelease: false

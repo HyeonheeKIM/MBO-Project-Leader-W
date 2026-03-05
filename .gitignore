@@ -1,0 +1,22 @@
+# src_web 폴더만 포함, 나머지 모두 제외
+/*
+!src_web/
+!.github/
+!.gitignore
+!deploy_web.bat
+!DEPLOY_GUIDE.md
+
+# src_web 내부에서 불필요한 파일 제외
+src_web/__pycache__/
+src_web/build/
+src_web/dist/
+src_web/*.db
+src_web/*.spec
+src_web/app_flask_backup.*
+src_web/static/js/app_flask_backup.*
+
+# 가상환경
+.venv/
+
+# Office 임시 파일
+~$*

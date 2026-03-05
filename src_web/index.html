@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MBO Project Leader</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <img src="app_icon.ico" alt="MBO" class="logo-icon-img">
+            <span class="logo-text">MBO Leader</span>
+            <button class="notification-bell" id="notificationBell" onclick="openNotificationPanel()" title="공지사항">
+                🔔
+                <span class="notification-dot" id="notificationDot"></span>
+            </button>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-label">관리</div>
+            <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+                <span class="nav-icon">📋</span> 대시보드
+            </a>
+            <a class="nav-item" data-page="projects" onclick="navigate('projects')">
+                <span class="nav-icon">📂</span> 프로젝트
+            </a>
+            <a class="nav-item" data-page="monthly" onclick="navigate('monthly')">
+                <span class="nav-icon">📅</span> 월별 계획
+            </a>
+            <a class="nav-item" data-page="daily" onclick="navigate('daily')">
+                <span class="nav-icon">✅</span> 일별 체크
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-label">분석</div>
+            <a class="nav-item" data-page="tracking" onclick="navigate('tracking')">
+                <span class="nav-icon">📈</span> 추적 & 분석
+            </a>
+            <a class="nav-item" data-page="gantt" onclick="navigate('gantt')">
+                <span class="nav-icon">📊</span> 간트차트
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-label">설정</div>
+            <a class="nav-item" data-page="years" onclick="navigate('years')">
+                <span class="nav-icon">📆</span> 연도 관리
+            </a>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="version-badge" id="versionBadge">v...</div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+        <!-- Content will be dynamically loaded -->
+    </main>
+
+    <!-- Notification Panel -->
+    <div class="notification-overlay" id="notificationOverlay" onclick="closeNotificationPanel()">
+        <div class="notification-panel" onclick="event.stopPropagation()">
+            <div class="notification-panel-header">
+                <h3>🔔 공지사항</h3>
+                <button class="modal-close" onclick="closeNotificationPanel()">&times;</button>
+            </div>
+            <div class="notification-panel-body" id="notificationBody">
+                <div class="empty-state"><div class="empty-icon">📭</div>공지사항이 없습니다.</div>
+            </div>
+            <div class="notification-panel-footer" id="notificationFooter"></div>
+        </div>
+    </div>
+
+    <!-- Modal Overlay -->
+    <div class="modal-overlay" id="modalOverlay" onmousedown="if(event.target===this)closeModal()">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="modalTitle">제목</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>
