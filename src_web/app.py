@@ -25,11 +25,10 @@ import webview
 GITHUB_REPO = "HyeonheeKIM/MBO-Project-Leader-W"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_NOTIFICATION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/src_web/notification.md"
-EXE_ASSET_NAME = "MBO_Project_Leader_Web.exe"
+EXE_ASSET_NAME = "MBO_Project_Leader.exe"
 
 
 def _parse_version(v):
-    """버전 문자열 '2026.03.05.2' → 비교 가능한 정수 튜플"""
     try:
         return tuple(int(x) for x in v.strip().strip('v').split('.'))
     except Exception:
@@ -37,7 +36,6 @@ def _parse_version(v):
 
 
 def check_update():
-    """GitHub latest release에서 새 버전 확인. dict 반환."""
     import urllib.request
     try:
         req = urllib.request.Request(
