@@ -6,9 +6,9 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.4"
+__version__ = "2026.03.05.5"
 
-#
+# 업데이트 기능을 확인하고자 합니다.
 
 import os
 import sys
