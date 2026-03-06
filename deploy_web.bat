@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+set "GCM_GUI_PROMPT=0"
 echo ============================================
 echo   MBO Project Leader - 배포 스크립트
 echo ============================================
