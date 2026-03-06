@@ -30,7 +30,7 @@ def _read_version():
         vf = os.path.join(d, 'version.dat')
         if os.path.exists(vf):
             with open(vf, 'r', encoding='utf-8') as f:
-                return f.read().strip()
+                return f.readline().strip()
     return '0.0.0.0'
 
 __version__ = _read_version()
@@ -1082,10 +1082,23 @@ class Api:
             return {'needs_update': False}
 
     def start_update(self, exe_url, latest_version):
-        """업데이트 폴더 생성"""
+        """업데이트 폴더 생성 및 업데이트 파일 다운로드"""
+        import urllib.request
         try:
             update_dir = os.path.join(BASE_DIR, 'update')
             os.makedirs(update_dir, exist_ok=True)
+
+            base_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main"
+            files = [
+                (f"{base_url}/update.bat", os.path.join(BASE_DIR, 'update.bat')),
+                (f"{base_url}/update_message.hta", os.path.join(update_dir, 'update_message.hta')),
+            ]
+            for url, dest in files:
+                req = urllib.request.Request(url, headers={'User-Agent': 'MBO-Project-Leader'})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    with open(dest, 'wb') as f:
+                        f.write(resp.read())
+
             return {'ok': True, 'update_dir': update_dir}
         except Exception as e:
             return {'error': str(e)}
