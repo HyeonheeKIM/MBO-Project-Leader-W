@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.7"
+__version__ = "2026.03.05.8"
 
 import os
 import sys
@@ -139,60 +139,84 @@ var d=0;setInterval(function(){d=(d+1)%4;document.getElementById('dots').innerTe
 
         # ── _updater.bat ──
         # BAT이 다운로드 → old 삭제 → new 실행까지 전부 담당
+        log_file = os.path.join(exe_dir, 'bat_log.txt')
         bat_content = f'''@echo off
 chcp 65001 >nul
+set "LOG={log_file}"
+
+echo [%date% %time%] ========== 업데이트 시작 ========== > "%LOG%"
+echo [%date% %time%] current_exe = {current_exe} >> "%LOG%"
+echo [%date% %time%] new_exe_temp = {new_exe_temp} >> "%LOG%"
+echo [%date% %time%] download_url = {download_url} >> "%LOG%"
+echo [%date% %time%] PID = {pid} >> "%LOG%"
 
 :: ─── 안내 팝업 ───
 start "" mshta.exe "{progress_hta}"
+echo [%date% %time%] HTA 팝업 실행 >> "%LOG%"
 
 :: ─── old.exe(PID {pid}) 종료 대기 ───
+echo [%date% %time%] old.exe 종료 대기 시작 (PID {pid}) >> "%LOG%"
 :wait_old
 timeout /t 1 /nobreak >nul
 tasklist /FI "PID eq {pid}" /NH 2>nul | find /i "{exe_name}" >nul
 if not errorlevel 1 goto wait_old
+echo [%date% %time%] old.exe 종료 확인 >> "%LOG%"
 timeout /t 2 /nobreak >nul
 
 :: ─── _MEI 임시 폴더 정리 ───
+echo [%date% %time%] _MEI 정리 시작 >> "%LOG%"
 {mei_cleanup}
 timeout /t 1 /nobreak >nul
+echo [%date% %time%] _MEI 정리 완료 >> "%LOG%"
 
 :: ─── 새 EXE 다운로드 (PowerShell) ───
+echo [%date% %time%] 다운로드 시작 >> "%LOG%"
 powershell -NoProfile -Command "try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 120 }} catch {{ exit 1 }}"
 if errorlevel 1 (
+    echo [%date% %time%] [오류] 다운로드 실패 (errorlevel=%errorlevel%) >> "%LOG%"
     taskkill /f /im mshta.exe >nul 2>&1
-    echo [오류] 다운로드 실패
     if exist "{new_exe_temp}" del /f /q "{new_exe_temp}" >nul 2>&1
-    pause
     goto end
 )
+echo [%date% %time%] 다운로드 완료 >> "%LOG%"
 
 :: ─── 다운로드 검증 (5MB 이상) ───
 for %%F in ("{new_exe_temp}") do set FSIZE=%%~zF
+echo [%date% %time%] 파일 크기 = %FSIZE% bytes >> "%LOG%"
 if %FSIZE% LSS 5242880 (
+    echo [%date% %time%] [오류] 파일 손상 (크기: %FSIZE% bytes, 5MB 미만) >> "%LOG%"
     taskkill /f /im mshta.exe >nul 2>&1
-    echo [오류] 다운로드 파일 손상 (크기: %FSIZE% bytes)
     del /f /q "{new_exe_temp}" >nul 2>&1
-    pause
     goto end
 )
+echo [%date% %time%] 파일 검증 통과 >> "%LOG%"
 
 :: ─── old.exe 삭제 ───
+echo [%date% %time%] old.exe 삭제 시도: {current_exe} >> "%LOG%"
 del /f /q "{current_exe}" >nul 2>&1
 if exist "{current_exe}" (
+    echo [%date% %time%] old.exe 아직 존재, 2초 후 재시도 >> "%LOG%"
     timeout /t 2 /nobreak >nul
     del /f /q "{current_exe}" >nul 2>&1
 )
-
-:: ─── new.exe → 원래 이름으로 이동 ───
-move /Y "{new_exe_temp}" "{current_exe}" >nul 2>&1
-if not exist "{current_exe}" (
-    taskkill /f /im mshta.exe >nul 2>&1
-    echo [오류] 파일 교체 실패
-    pause
-    goto end
+if exist "{current_exe}" (
+    echo [%date% %time%] [오류] old.exe 삭제 실패 >> "%LOG%"
+) else (
+    echo [%date% %time%] old.exe 삭제 성공 >> "%LOG%"
 )
 
+:: ─── new.exe → 원래 이름으로 이동 ───
+echo [%date% %time%] move 시작: _new_update.exe → {exe_name} >> "%LOG%"
+move /Y "{new_exe_temp}" "{current_exe}" >nul 2>&1
+if not exist "{current_exe}" (
+    echo [%date% %time%] [오류] 파일 교체 실패 (move 후 {exe_name} 없음) >> "%LOG%"
+    taskkill /f /im mshta.exe >nul 2>&1
+    goto end
+)
+echo [%date% %time%] move 성공 >> "%LOG%"
+
 :: ─── 새 버전 실행 ───
+echo [%date% %time%] 새 EXE 실행: {current_exe} >> "%LOG%"
 start "" "{current_exe}"
 
 :: ─── 새 EXE 프로세스 확인 대기 (최대 30초) ───
@@ -202,15 +226,17 @@ timeout /t 1 /nobreak >nul
 tasklist /NH 2>nul | find /i "{exe_name}" >nul
 if errorlevel 1 (
     set /a _wc+=1
+    echo [%date% %time%] 새 EXE 대기 중... (%_wc%초) >> "%LOG%"
     if %_wc% lss 30 goto wait_new
 )
 
 :: ─── 새 프로그램 실행 확인 후 2초 대기, 팝업 닫기 ───
+echo [%date% %time%] 새 EXE 프로세스 확인됨 >> "%LOG%"
 timeout /t 2 /nobreak >nul
 taskkill /f /im mshta.exe >nul 2>&1
+echo [%date% %time%] ========== 업데이트 완료 ========== >> "%LOG%"
 
 :end
-:: _updater.bat과 HTA는 new.exe가 3초 후 자동 삭제함
 exit
 '''
         with open(updater_bat, 'w', encoding='utf-8') as f:
