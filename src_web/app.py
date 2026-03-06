@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.18"
+__version__ = "2026.03.05.19"
 
 import os
 import sys
@@ -22,8 +22,6 @@ import webview
 # ============================================================
 GITHUB_REPO = "HyeonheeKIM/MBO-Project-Leader-W"
 GITHUB_NOTIFICATION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/src_web/notification.md"
-GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-GITHUB_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main"
 
 
 # Windows: AppUserModelID 설정
@@ -1031,110 +1029,6 @@ class Api:
         conn.close()
         return {'ok': True}
 
-    # ---- Update ----
-    def check_for_update(self):
-        """GitHub Releases API로 최신 버전 확인"""
-        import urllib.request
-        try:
-            req = urllib.request.Request(GITHUB_RELEASES_API, headers={
-                'User-Agent': 'MBO-Project-Leader',
-                'Accept': 'application/vnd.github.v3+json'
-            })
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-
-            latest_tag = data.get('tag_name', '')  # e.g. "v2026.03.06.1"
-            latest_version = latest_tag.lstrip('v')
-
-            # Release assets에서 EXE 다운로드 URL 찾기
-            exe_url = ''
-            for asset in data.get('assets', []):
-                if asset['name'].lower().endswith('.exe'):
-                    exe_url = asset['browser_download_url']
-                    break
-
-            needs_update = (latest_version != __version__) and bool(exe_url)
-
-            return {
-                'current_version': __version__,
-                'latest_version': latest_version,
-                'needs_update': needs_update,
-                'exe_url': exe_url,
-                'release_name': data.get('name', ''),
-            }
-        except Exception as e:
-            return {
-                'current_version': __version__,
-                'latest_version': '',
-                'needs_update': False,
-                'error': str(e)
-            }
-
-    def start_update(self, exe_url, latest_version):
-        """update.bat + update_message.bat 다운로드 후 업데이트 시작"""
-        import urllib.request
-        import subprocess
-
-        try:
-            update_dir = os.path.join(BASE_DIR, 'update')
-            os.makedirs(update_dir, exist_ok=True)
-
-            # 1) update.bat 다운로드 (BASE_DIR에)
-            update_bat_url = f"{GITHUB_RAW_BASE}/update.bat"
-            update_bat_path = os.path.join(BASE_DIR, 'update.bat')
-            req = urllib.request.Request(update_bat_url, headers={'User-Agent': 'MBO-Project-Leader'})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                with open(update_bat_path, 'wb') as f:
-                    f.write(resp.read())
-
-            if not os.path.exists(update_bat_path) or os.path.getsize(update_bat_path) == 0:
-                return {'error': 'update.bat 다운로드 실패'}
-
-            # 2) update_message.bat 다운로드 (update 폴더에)
-            msg_bat_url = f"{GITHUB_RAW_BASE}/update_message.bat"
-            msg_bat_path = os.path.join(update_dir, 'update_message.bat')
-            req = urllib.request.Request(msg_bat_url, headers={'User-Agent': 'MBO-Project-Leader'})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                with open(msg_bat_path, 'wb') as f:
-                    f.write(resp.read())
-
-            if not os.path.exists(msg_bat_path) or os.path.getsize(msg_bat_path) == 0:
-                return {'error': 'update_message.bat 다운로드 실패'}
-
-            # 3) update_info.txt 생성
-            if getattr(sys, 'frozen', False):
-                exe_name = os.path.basename(sys.executable)
-            else:
-                exe_name = 'MBO_Project_Leader.exe'
-
-            info_path = os.path.join(update_dir, 'update_info.txt')
-            with open(info_path, 'w', encoding='utf-8') as f:
-                f.write(f"EXE_URL={exe_url}\n")
-                f.write(f"VERSION={latest_version}\n")
-                f.write(f"EXE_NAME={exe_name}\n")
-
-            # 4) update_message.bat 실행 (사용자에게 진행 상태 표시)
-            subprocess.Popen(
-                ['cmd', '/c', msg_bat_path],
-                cwd=BASE_DIR,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
-            )
-
-            # 5) update.bat 실행
-            subprocess.Popen(
-                ['cmd', '/c', update_bat_path],
-                cwd=BASE_DIR,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
-            )
-
-            # 6) 앱 종료 (EXE 파일 잠금 해제를 위해)
-            import time
-            time.sleep(1)
-            os._exit(0)
-
-        except Exception as e:
-            return {'error': str(e)}
-
 
 # ============================================================
 # 엔트리 포인트
@@ -1173,20 +1067,8 @@ def _set_window_icon(icon_path):
         pass
 
 
-def _cleanup_old_update():
-    """앱 시작 시 이전 업데이트 잔여 파일(update.bat, _MBO_old.exe) 정리"""
-    for fname in ['update.bat', '_MBO_old.exe']:
-        fpath = os.path.join(BASE_DIR, fname)
-        try:
-            if os.path.exists(fpath):
-                os.remove(fpath)
-        except Exception:
-            pass
-
-
 def main():
     init_db()
-    _cleanup_old_update()
     api = Api()
     html_path = os.path.join(APP_DIR, 'index.html')
     icon_path = os.path.abspath(os.path.join(APP_DIR, 'app_icon.ico'))
