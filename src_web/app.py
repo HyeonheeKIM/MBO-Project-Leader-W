@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.9"
+__version__ = "2026.03.05.10"
 
 import os
 import sys
@@ -143,6 +143,7 @@ var d=0;setInterval(function(){d=(d+1)%4;document.getElementById('dots').innerTe
         bat_content = f'''@echo off
 chcp 65001 >nul
 set "LOG={log_file}"
+set "LOG_PS={log_file}"
 
 echo [%date% %time%] ========== 업데이트 시작 ========== > "%LOG%"
 echo [%date% %time%] current_exe = {current_exe} >> "%LOG%"
@@ -171,7 +172,7 @@ echo [%date% %time%] _MEI 정리 완료 >> "%LOG%"
 
 :: ─── 새 EXE 다운로드 (PowerShell) ───
 echo [%date% %time%] 다운로드 시작 >> "%LOG%"
-powershell -NoProfile -Command "try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 120 }} catch {{ exit 1 }}"
+powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 120 }} catch {{ $_.Exception.Message | Out-File -Append '%LOG_PS%'; exit 1 }}"
 if errorlevel 1 (
     echo [%date% %time%] [오류] 다운로드 실패 (errorlevel=%errorlevel%) >> "%LOG%"
     taskkill /f /im mshta.exe >nul 2>&1
