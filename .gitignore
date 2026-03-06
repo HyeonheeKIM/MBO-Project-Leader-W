@@ -3,8 +3,6 @@
 !src_web/
 !.github/
 !.gitignore
-!deploy_web.bat
-!DEPLOY_GUIDE.md
 !update.bat
 !update_message.hta
 
