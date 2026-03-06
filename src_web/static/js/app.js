@@ -1521,6 +1521,19 @@ async function doUpdate(exeUrl, latestVersion) {
                 footer.style.display = 'flex';
                 footer.innerHTML = `<button class="btn" onclick="closeUpdateDialog()">\uB2EB\uAE30</button>`;
             }
+        } else if (result && result.ok) {
+            // \uC5C5\uB370\uC774\uD2B8 \uC900\uBE44 \uC644\uB8CC — \uC571 \uC885\uB8CC
+            if (body) {
+                body.innerHTML = `
+                    <div style="text-align:center;padding:20px;">
+                        <div style="font-size:2rem;margin-bottom:12px;">\uD83D\uDD04</div>
+                        <p>\uC5C5\uB370\uC774\uD2B8\uB97C \uC704\uD574 \uC571\uC744 \uC885\uB8CC\uD569\uB2C8\uB2E4...</p>
+                    </div>
+                `;
+            }
+            setTimeout(async () => {
+                try { await pyapi.close_app(); } catch(e) {}
+            }, 1500);
         }
     } catch (e) {
         console.error('Update failed:', e);

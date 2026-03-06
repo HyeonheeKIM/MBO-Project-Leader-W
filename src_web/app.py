@@ -1082,12 +1082,16 @@ class Api:
             return {'needs_update': False}
 
     def start_update(self, exe_url, latest_version):
-        """업데이트 폴더 생성 및 업데이트 파일 다운로드"""
+        """업데이트 폴더 생성, 파일 다운로드, config 작성, HTA·update.bat 실행"""
         import urllib.request
+        import subprocess
+        if not getattr(sys, 'frozen', False):
+            return {'error': '개발 모드에서는 업데이트를 지원하지 않습니다.'}
         try:
             update_dir = os.path.join(BASE_DIR, 'update')
             os.makedirs(update_dir, exist_ok=True)
 
+            # 1) update.bat, update_message.hta 다운로드
             base_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main"
             files = [
                 (f"{base_url}/update.bat", os.path.join(BASE_DIR, 'update.bat')),
@@ -1099,9 +1103,37 @@ class Api:
                     with open(dest, 'wb') as f:
                         f.write(resp.read())
 
+            # 2) update_config.txt 작성 (update.bat이 읽을 정보)
+            config_path = os.path.join(update_dir, 'update_config.txt')
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write(exe_url + '\n')
+                f.write(sys.executable + '\n')
+
+            # 3) update_message.hta 실행 (업데이트 중 안내 UI)
+            hta_path = os.path.join(update_dir, 'update_message.hta')
+            subprocess.Popen(['mshta', hta_path], cwd=BASE_DIR)
+
+            # 4) update.bat 실행 (백그라운드, 앱 종료 대기 후 업데이트 진행)
+            update_bat = os.path.join(BASE_DIR, 'update.bat')
+            DETACHED_PROCESS = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            subprocess.Popen(
+                update_bat, cwd=BASE_DIR,
+                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            )
+
             return {'ok': True, 'update_dir': update_dir}
         except Exception as e:
             return {'error': str(e)}
+
+    def close_app(self):
+        """앱 종료 (업데이트 진행을 위해)"""
+        def _close():
+            import time
+            time.sleep(0.5)
+            webview.windows[0].destroy()
+        threading.Thread(target=_close, daemon=True).start()
+        return {'ok': True}
 
 
 # ============================================================
