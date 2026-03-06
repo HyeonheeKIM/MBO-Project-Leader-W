@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.13"
+__version__ = "2026.03.05.14"
 
 import os
 import sys
@@ -342,17 +342,33 @@ exit
         with open(updater_bat, 'w', encoding='utf-8') as f:
             f.write(bat_content)
 
-        # BAT 실행
+        # ── Python 측 사전 로그 (BAT 실행 전 디버깅용) ──
+        try:
+            with open(log_file, 'w', encoding='utf-8') as lf:
+                lf.write(f"[Python] updater_bat = {updater_bat}\n")
+                lf.write(f"[Python] bat 파일 존재 = {os.path.exists(updater_bat)}\n")
+                lf.write(f"[Python] bat 파일 크기 = {os.path.getsize(updater_bat)}\n")
+                lf.write(f"[Python] exe_dir = {exe_dir}\n")
+                lf.write(f"[Python] pid = {pid}\n")
+                lf.write(f"[Python] Popen 호출 직전\n")
+        except Exception:
+            pass
+
+        # BAT 실행 - DETACHED_PROCESS로 완전히 독립된 프로세스로 실행
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        CREATE_NO_WINDOW = 0x08000000
         subprocess.Popen(
-            ['cmd', '/c', updater_bat],
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            f'cmd /c "{updater_bat}"',
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
             cwd=exe_dir,
+            close_fds=True,
         )
 
-        # 현재 앱 종료
+        # 현재 앱 종료 (BAT가 충분히 시작된 후)
         def _exit():
             import time
-            time.sleep(0.5)
+            time.sleep(2)  # BAT가 확실히 실행될 시간 확보
             for w in webview.windows:
                 try:
                     w.destroy()
