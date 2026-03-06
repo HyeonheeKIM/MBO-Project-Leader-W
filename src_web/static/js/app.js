@@ -1440,6 +1440,92 @@ function closeNotificationPanel() {
     document.getElementById('notificationOverlay').classList.remove('show');
 }
 
+// ===== Update Check =====
+async function checkForUpdate() {
+    try {
+        const result = await pyapi.check_for_update();
+        if (result && result.needs_update) {
+            showUpdateDialog(result);
+        }
+    } catch (e) {
+        console.error('Update check failed:', e);
+    }
+}
+
+function showUpdateDialog(info) {
+    const overlay = document.createElement('div');
+    overlay.id = 'updateOverlay';
+    overlay.className = 'modal-overlay show';
+    overlay.innerHTML = `
+        <div class="modal" style="max-width:420px;">
+            <div class="modal-header">
+                <h3>\uD83D\uDD04 \uC5C5\uB370\uC774\uD2B8 \uC548\uB0B4</h3>
+            </div>
+            <div class="modal-body" style="padding:20px;" id="updateDialogBody">
+                <p style="margin-bottom:12px;">\uC0C8\uB85C\uC6B4 \uBC84\uC804\uC774 \uCD9C\uC2DC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.</p>
+                <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                        <span style="color:#94a3b8;">\uD604\uC7AC \uBC84\uC804</span>
+                        <span>v${info.current_version}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="color:#94a3b8;">\uCD5C\uC2E0 \uBC84\uC804</span>
+                        <span style="color:#10b981;font-weight:600;">v${info.latest_version}</span>
+                    </div>
+                </div>
+                <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0;">
+                    \uC5C5\uB370\uC774\uD2B8\uB97C \uC9C4\uD589\uD558\uBA74 \uD504\uB85C\uADF8\uB7A8\uC774 \uC7AC\uC2DC\uC791\uB429\uB2C8\uB2E4.
+                </p>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;" id="updateDialogFooter">
+                <button class="btn" onclick="closeUpdateDialog()">\uB098\uC911\uC5D0</button>
+                <button class="btn btn-blue" onclick="doUpdate('${info.exe_url}','${info.latest_version}')">\uC5C5\uB370\uC774\uD2B8</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+}
+
+function closeUpdateDialog() {
+    const overlay = document.getElementById('updateOverlay');
+    if (overlay) overlay.remove();
+}
+
+async function doUpdate(exeUrl, latestVersion) {
+    const body = document.getElementById('updateDialogBody');
+    const footer = document.getElementById('updateDialogFooter');
+    if (body) {
+        body.innerHTML = `
+            <div style="text-align:center;padding:20px;">
+                <div class="spinner" style="margin:0 auto 16px;"></div>
+                <p>\uC5C5\uB370\uC774\uD2B8 \uC900\uBE44 \uC911...</p>
+            </div>
+        `;
+    }
+    if (footer) footer.style.display = 'none';
+
+    try {
+        const result = await pyapi.start_update(exeUrl, latestVersion);
+        if (result && result.error) {
+            if (body) {
+                body.innerHTML = `
+                    <div style="text-align:center;padding:20px;">
+                        <div style="font-size:2rem;margin-bottom:12px;">\u26A0\uFE0F</div>
+                        <p>\uC5C5\uB370\uC774\uD2B8 \uC2E4\uD328</p>
+                        <p style="color:#ef4444;font-size:0.85rem;">${result.error}</p>
+                    </div>
+                `;
+            }
+            if (footer) {
+                footer.style.display = 'flex';
+                footer.innerHTML = `<button class="btn" onclick="closeUpdateDialog()">\uB2EB\uAE30</button>`;
+            }
+        }
+    } catch (e) {
+        console.error('Update failed:', e);
+    }
+}
+
 // ===== Init =====
 async function initApp() {
     await pyReady;
@@ -1454,98 +1540,9 @@ async function initApp() {
     navigate('dashboard');
     loadNotificationDot();
 
-    // 자동 업데이트 확인 (시작 후 2초 지연)
-    setTimeout(checkForUpdate, 2000);
-}
+    // 백그라운드 업데이트 확인
+    checkForUpdate();
 
-// ===== Auto Update =====
-async function checkForUpdate() {
-    try {
-        const result = await pyapi.check_for_update();
-        if (result && result.available && result.download_url) {
-            showUpdateDialog(result);
-        }
-    } catch (e) {
-        console.error('업데이트 확인 실패:', e);
-    }
-}
-
-function showUpdateDialog(info) {
-    const html = `
-        <div style="text-align:center;padding:10px 0">
-            <div style="font-size:48px;margin-bottom:12px">🚀</div>
-            <div style="font-size:15px;color:var(--text-dim);margin-bottom:16px">
-                새로운 버전이 있습니다!
-            </div>
-            <div style="display:flex;justify-content:center;gap:24px;margin-bottom:18px">
-                <div>
-                    <div style="font-size:12px;color:var(--text-dark)">현재 버전</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--text-dim)">v${escHtml(info.current)}</div>
-                </div>
-                <div style="font-size:24px;color:var(--accent-blue);align-self:center">→</div>
-                <div>
-                    <div style="font-size:12px;color:var(--text-dark)">최신 버전</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--accent-blue)">v${escHtml(info.latest)}</div>
-                </div>
-            </div>
-            ${info.release_name ? `<div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">${escHtml(info.release_name)}</div>` : ''}
-            <div style="font-size:12px;color:var(--text-dark);margin-bottom:20px">
-                업데이트 시 앱이 자동으로 재시작됩니다.<br>데이터(DB)는 그대로 유지됩니다.
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-gray" onclick="closeModal()">나중에</button>
-                <button class="btn btn-blue" onclick="doUpdate('${escAttr(info.download_url)}')">
-                    ⬇️ 업데이트
-                </button>
-            </div>
-        </div>
-    `;
-    openModal('🔄 업데이트 확인', html);
-}
-
-async function doUpdate(downloadUrl) {
-    // 모달 내용을 업데이트 준비 상태로 변경
-    document.getElementById('modalBody').innerHTML = `
-        <div style="text-align:center;padding:30px 0">
-            <div class="spinner-ring" style="margin:0 auto 16px"></div>
-            <div style="font-size:15px;font-weight:500">업데이트 준비 중...</div>
-            <div style="font-size:12px;color:var(--text-dark);margin-top:8px">잠시 후 앱이 종료되고 업데이트가 진행됩니다.</div>
-        </div>
-    `;
-    try {
-        const result = await pyapi.apply_update(downloadUrl);
-        if (result && result.success) {
-            document.getElementById('modalBody').innerHTML = `
-                <div style="text-align:center;padding:30px 0">
-                    <div style="font-size:48px;margin-bottom:12px">&#x1F504;</div>
-                    <div style="font-size:15px;font-weight:500">업데이트를 진행합니다</div>
-                    <div style="font-size:12px;color:var(--text-dark);margin-top:8px">앱이 곧 종료되고 새 버전이 자동으로 실행됩니다.</div>
-                </div>
-            `;
-        } else {
-            document.getElementById('modalBody').innerHTML = `
-                <div style="text-align:center;padding:20px 0">
-                    <div style="font-size:48px;margin-bottom:12px">❌</div>
-                    <div style="font-size:14px;color:var(--accent-red);margin-bottom:8px">업데이트에 실패했습니다.</div>
-                    <div style="font-size:12px;color:var(--text-dark)">${escHtml(result?.error || '알 수 없는 오류')}</div>
-                    <div class="form-actions" style="margin-top:16px">
-                        <button class="btn btn-gray" onclick="closeModal()">닫기</button>
-                    </div>
-                </div>
-            `;
-        }
-    } catch (e) {
-        document.getElementById('modalBody').innerHTML = `
-            <div style="text-align:center;padding:20px 0">
-                <div style="font-size:48px;margin-bottom:12px">❌</div>
-                <div style="font-size:14px;color:var(--accent-red);margin-bottom:8px">업데이트에 실패했습니다.</div>
-                <div style="font-size:12px;color:var(--text-dark)">${escHtml(String(e))}</div>
-                <div class="form-actions" style="margin-top:16px">
-                    <button class="btn btn-gray" onclick="closeModal()">닫기</button>
-                </div>
-            </div>
-        `;
-    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

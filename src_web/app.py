@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.15"
+__version__ = "2026.03.05.16"
 
 import os
 import sys
@@ -15,371 +15,16 @@ import sqlite3
 from datetime import datetime, date, timedelta
 import re as _re
 import threading
-import tempfile
-import subprocess
 import webview
 
 # ============================================================
-# GitHub 자동 업데이트
+# GitHub 설정
 # ============================================================
 GITHUB_REPO = "HyeonheeKIM/MBO-Project-Leader-W"
-GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_NOTIFICATION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/src_web/notification.md"
-EXE_ASSET_NAME = "MBO_Project_Leader.exe"
+GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main"
 
-
-def _parse_version(v):
-    try:
-        return tuple(int(x) for x in v.strip().strip('v').split('.'))
-    except Exception:
-        return (0,)
-
-
-def check_update():
-    import urllib.request
-    try:
-        req = urllib.request.Request(
-            GITHUB_API_URL,
-            headers={'Accept': 'application/vnd.github+json',
-                     'User-Agent': 'MBO-Project-Leader-Updater'}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-        remote_tag = data.get('tag_name', '')
-        remote_ver = remote_tag.lstrip('v')
-        if _parse_version(remote_ver) > _parse_version(__version__):
-            # 다운로드 URL 찾기 (이름이 바뀔 수 있으므로 .exe 에셋 중 첫 번째를 사용)
-            download_url = ''
-            for asset in data.get('assets', []):
-                if asset['name'] == EXE_ASSET_NAME:
-                    download_url = asset['browser_download_url']
-                    break
-            # 정확한 이름 매칭 실패 시 fallback
-            if not download_url:
-                for asset in data.get('assets', []):
-                    if asset['name'].lower().endswith('.exe'):
-                        download_url = asset['browser_download_url']
-                        break
-            return {
-                'available': True,
-                'current': __version__,
-                'latest': remote_ver,
-                'download_url': download_url,
-                'release_name': data.get('name', ''),
-                'body': data.get('body', ''),
-            }
-        return {'available': False, 'current': __version__, 'latest': remote_ver}
-    except Exception as e:
-        return {'available': False, 'current': __version__, 'error': str(e)}
-
-
-def download_and_apply_update(download_url):
-    """_updater.bat을 생성하고 실행한 뒤 현재 앱을 종료한다.
-    BAT이 다운로드·교체·새 EXE 실행을 모두 담당한다."""
-
-    if not getattr(sys, 'frozen', False):
-        return {'success': False, 'error': '개발 환경에서는 자동 업데이트가 지원되지 않습니다.'}
-
-    current_exe = sys.executable
-    exe_dir = os.path.dirname(current_exe)
-    exe_name = os.path.basename(current_exe)
-    new_exe_temp = os.path.join(exe_dir, '_new_update.exe')
-    pid = os.getpid()
-
-    # _MEI 임시 폴더 정리 명령
-    temp_dir = os.environ.get('TEMP', '')
-    mei_cleanup = ''
-    if temp_dir:
-        mei_cleanup = f'for /d %%D in ("{temp_dir}\\_MEI*") do rd /s /q "%%D" >nul 2>&1'
-
-    try:
-        updater_bat = os.path.join(exe_dir, '_updater.bat')
-        progress_hta = os.path.join(exe_dir, '_update_progress.hta')
-
-        # ── 안내 팝업 HTA ──
-        hta_content = '''<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<title>MBO Project Leader</title>
-<HTA:APPLICATION ID="oApp"
-    APPLICATIONNAME="MBO Updater"
-    BORDER="none" BORDERSTYLE="normal" CAPTION="no"
-    SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" SYSMENU="no"
-    WINDOWSTATE="normal"
-/>
-<style>
-body{font-family:'Segoe UI','Malgun Gothic',sans-serif;background:#f0f4ff;
-margin:0;display:flex;align-items:center;justify-content:center;height:100%;overflow:hidden}
-.box{text-align:center;padding:30px 40px}
-.icon{font-size:36px;margin-bottom:12px}
-.title{font-size:16px;font-weight:600;color:#1e1b4b;margin-bottom:8px}
-.sub{font-size:12px;color:#6b7280}
-.dots{display:inline-block;width:20px;text-align:left}
-</style>
-<script language="VBScript">
-Sub Window_OnLoad
-    window.resizeTo 360,180
-    window.moveTo (window.screen.availWidth-360)/2,(window.screen.availHeight-180)/2
-End Sub
-</script>
-<script language="JavaScript">
-var d=0;setInterval(function(){d=(d+1)%4;document.getElementById('dots').innerText=Array(d+1).join('.');},400);
-</script>
-</head>
-<body>
-<div class="box">
-<div class="icon">&#9203;</div>
-<div class="title">&#50629;&#45936;&#51060;&#53944; &#51201;&#50857; &#51473;<span class="dots" id="dots">.</span></div>
-<div class="sub">&#51104;&#49884;&#47564; &#44592;&#45796;&#47140;&#51452;&#49464;&#50836;</div>
-</div>
-</body>
-</html>'''
-        with open(progress_hta, 'w', encoding='utf-8-sig') as f:
-            f.write(hta_content)
-
-        # ── _updater.bat ──
-        # BAT이 다운로드 → old 삭제 → new 실행까지 전부 담당
-        log_file = os.path.join(exe_dir, 'bat_log.txt')
-        # 8.3 짧은 경로를 사용하여 한글 경로 문제 방지
-        bat_content = f'''@echo off
-chcp 65001 >nul
-set "LOG={log_file}"
-
-echo [%date% %time%] ========== 업데이트 시작 ========== > "%LOG%"
-echo [%date% %time%] current_exe = {current_exe} >> "%LOG%"
-echo [%date% %time%] new_exe_temp = {new_exe_temp} >> "%LOG%"
-echo [%date% %time%] download_url = {download_url} >> "%LOG%"
-echo [%date% %time%] PID = {pid} >> "%LOG%"
-echo [%date% %time%] exe_dir = {exe_dir} >> "%LOG%"
-echo [%date% %time%] TEMP = %TEMP% >> "%LOG%"
-echo [%date% %time%] CODEPAGE = 65001 >> "%LOG%"
-
-:: ─── 환경 진단 ───
-echo [%date% %time%] OS 버전: >> "%LOG%"
-ver >> "%LOG%" 2>&1
-echo [%date% %time%] certutil 확인 >> "%LOG%"
-where certutil >> "%LOG%" 2>&1
-echo [%date% %time%] bitsadmin 확인 >> "%LOG%"
-where bitsadmin >> "%LOG%" 2>&1
-
-:: ─── 안내 팝업 ───
-start "" mshta.exe "{progress_hta}"
-echo [%date% %time%] HTA 팝업 실행 >> "%LOG%"
-
-:: ─── old.exe(PID {pid}) 종료 대기 ───
-echo [%date% %time%] old.exe 종료 대기 시작 (PID {pid}) >> "%LOG%"
-set /a _owc=0
-:wait_old
-timeout /t 1 /nobreak >nul
-tasklist /FI "PID eq {pid}" /NH 2>nul | find /i "{exe_name}" >nul
-if not errorlevel 1 (
-    set /a _owc+=1
-    echo [%date% %time%] old.exe 아직 실행 중... (%_owc%초) >> "%LOG%"
-    if %_owc% geq 60 (
-        echo [%date% %time%] [오류] old.exe 종료 대기 타임아웃 (60초) >> "%LOG%"
-        taskkill /f /pid {pid} >nul 2>&1
-        timeout /t 2 /nobreak >nul
-    )
-    if %_owc% lss 65 goto wait_old
-)
-echo [%date% %time%] old.exe 종료 확인 >> "%LOG%"
-timeout /t 2 /nobreak >nul
-
-:: ─── _MEI 임시 폴더 정리 ───
-echo [%date% %time%] _MEI 정리 시작 >> "%LOG%"
-{mei_cleanup}
-timeout /t 1 /nobreak >nul
-echo [%date% %time%] _MEI 정리 완료 >> "%LOG%"
-
-:: ─── 기존 임시 파일 정리 ───
-if exist "{new_exe_temp}" (
-    echo [%date% %time%] 기존 _new_update.exe 삭제 >> "%LOG%"
-    del /f /q "{new_exe_temp}" >nul 2>&1
-)
-
-:: ─── 새 EXE 다운로드 (certutil, 방법 1) ───
-echo [%date% %time%] [방법1] certutil 다운로드 시작 >> "%LOG%"
-echo [%date% %time%] URL = {download_url} >> "%LOG%"
-echo [%date% %time%] 저장 위치 = {new_exe_temp} >> "%LOG%"
-certutil -urlcache -split -f "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
-set "DL_ERR=%errorlevel%"
-echo [%date% %time%] certutil 종료코드 = %DL_ERR% >> "%LOG%"
-
-:: 다운로드 파일 존재 확인
-if exist "{new_exe_temp}" (
-    echo [%date% %time%] [방법1] 파일 생성 확인됨 >> "%LOG%"
-    goto dl_done
-)
-echo [%date% %time%] [방법1] 실패 - 파일 없음 >> "%LOG%"
-
-:: certutil 캐시 정리 후 재시도
-echo [%date% %time%] certutil 캐시 정리 >> "%LOG%"
-certutil -urlcache -delete "{download_url}" >> "%LOG%" 2>&1
-
-:: ─── 새 EXE 다운로드 (bitsadmin, 방법 2) ───
-echo [%date% %time%] [방법2] bitsadmin 다운로드 시작 >> "%LOG%"
-bitsadmin /transfer "MBO_Update" /download /priority foreground "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
-set "DL_ERR2=%errorlevel%"
-echo [%date% %time%] bitsadmin 종료코드 = %DL_ERR2% >> "%LOG%"
-
-if exist "{new_exe_temp}" (
-    echo [%date% %time%] [방법2] 파일 생성 확인됨 >> "%LOG%"
-    goto dl_done
-)
-echo [%date% %time%] [방법2] 실패 - 파일 없음 >> "%LOG%"
-
-:: ─── 새 EXE 다운로드 (certutil 재시도, 방법 3) ───
-echo [%date% %time%] [방법3] certutil 재시도 (캐시 정리 후) >> "%LOG%"
-certutil -urlcache -split -f "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
-set "DL_ERR3=%errorlevel%"
-echo [%date% %time%] certutil 재시도 종료코드 = %DL_ERR3% >> "%LOG%"
-
-if exist "{new_exe_temp}" (
-    echo [%date% %time%] [방법3] 파일 생성 확인됨 >> "%LOG%"
-    goto dl_done
-)
-echo [%date% %time%] [방법3] 실패 - 파일 없음 >> "%LOG%"
-
-:: ─── 모든 다운로드 방법 실패 ───
-echo [%date% %time%] [오류] 모든 다운로드 방법 실패 >> "%LOG%"
-echo [%date% %time%] 네트워크 연결 상태 확인: >> "%LOG%"
-ping -n 1 github.com >> "%LOG%" 2>&1
-echo [%date% %time%] DNS 확인: >> "%LOG%"
-nslookup github.com >> "%LOG%" 2>&1
-taskkill /f /im mshta.exe >nul 2>&1
-goto end
-
-:dl_done
-echo [%date% %time%] 다운로드 완료 >> "%LOG%"
-
-:: ─── 다운로드 검증 (5MB 이상) ───
-for %%F in ("{new_exe_temp}") do set FSIZE=%%~zF
-echo [%date% %time%] 파일 크기 = %FSIZE% bytes >> "%LOG%"
-if not defined FSIZE (
-    echo [%date% %time%] [오류] 파일 크기를 읽을 수 없음 >> "%LOG%"
-    taskkill /f /im mshta.exe >nul 2>&1
-    goto end
-)
-if %FSIZE% LSS 5242880 (
-    echo [%date% %time%] [오류] 파일 손상 (크기: %FSIZE% bytes, 5MB 미만) >> "%LOG%"
-    taskkill /f /im mshta.exe >nul 2>&1
-    del /f /q "{new_exe_temp}" >nul 2>&1
-    goto end
-)
-echo [%date% %time%] 파일 검증 통과 >> "%LOG%"
-
-:: ─── old.exe 삭제 ───
-echo [%date% %time%] old.exe 삭제 시도: {current_exe} >> "%LOG%"
-del /f /q "{current_exe}" >nul 2>&1
-if exist "{current_exe}" (
-    echo [%date% %time%] old.exe 아직 존재, 3초 후 재시도 >> "%LOG%"
-    timeout /t 3 /nobreak >nul
-    del /f /q "{current_exe}" >nul 2>&1
-)
-if exist "{current_exe}" (
-    echo [%date% %time%] old.exe 2차 실패, taskkill 후 재시도 >> "%LOG%"
-    taskkill /f /im "{exe_name}" >nul 2>&1
-    timeout /t 3 /nobreak >nul
-    del /f /q "{current_exe}" >nul 2>&1
-)
-if exist "{current_exe}" (
-    echo [%date% %time%] [오류] old.exe 삭제 최종 실패 >> "%LOG%"
-    echo [%date% %time%] 실행 중인 프로세스 목록: >> "%LOG%"
-    tasklist /FI "IMAGENAME eq {exe_name}" >> "%LOG%" 2>&1
-    taskkill /f /im mshta.exe >nul 2>&1
-    goto end
-) else (
-    echo [%date% %time%] old.exe 삭제 성공 >> "%LOG%"
-)
-
-:: ─── new.exe → 원래 이름으로 이동 ───
-echo [%date% %time%] move 시작: _new_update.exe → {exe_name} >> "%LOG%"
-move /Y "{new_exe_temp}" "{current_exe}" >> "%LOG%" 2>&1
-echo [%date% %time%] move 종료코드 = %errorlevel% >> "%LOG%"
-if not exist "{current_exe}" (
-    echo [%date% %time%] [오류] 파일 교체 실패 (move 후 {exe_name} 없음) >> "%LOG%"
-    echo [%date% %time%] 디렉토리 내용: >> "%LOG%"
-    dir "{exe_dir}" >> "%LOG%" 2>&1
-    taskkill /f /im mshta.exe >nul 2>&1
-    goto end
-)
-echo [%date% %time%] move 성공 >> "%LOG%"
-for %%F in ("{current_exe}") do echo [%date% %time%] 새 파일 크기 = %%~zF bytes >> "%LOG%"
-
-:: ─── 새 버전 실행 ───
-echo [%date% %time%] 새 EXE 실행: {current_exe} >> "%LOG%"
-start "" "{current_exe}"
-echo [%date% %time%] start 종료코드 = %errorlevel% >> "%LOG%"
-
-:: ─── 새 EXE 프로세스 확인 대기 (최대 30초) ───
-set /a _wc=0
-:wait_new
-timeout /t 1 /nobreak >nul
-tasklist /NH 2>nul | find /i "{exe_name}" >nul
-if errorlevel 1 (
-    set /a _wc+=1
-    echo [%date% %time%] 새 EXE 대기 중... (%_wc%초) >> "%LOG%"
-    if %_wc% lss 30 goto wait_new
-)
-if %_wc% geq 30 (
-    echo [%date% %time%] [경고] 새 EXE 프로세스 30초 내 미감지 >> "%LOG%"
-) else (
-    echo [%date% %time%] 새 EXE 프로세스 확인됨 (%_wc%초 후) >> "%LOG%"
-)
-
-:: ─── 새 프로그램 실행 확인 후 2초 대기, 팝업 닫기 ───
-timeout /t 2 /nobreak >nul
-taskkill /f /im mshta.exe >nul 2>&1
-echo [%date% %time%] ========== 업데이트 완료 ========== >> "%LOG%"
-
-:: ─── 임시 파일 정리 ───
-if exist "{progress_hta}" del /f /q "{progress_hta}" >nul 2>&1
-
-:end
-echo [%date% %time%] BAT 종료 >> "%LOG%"
-exit
-'''
-        with open(updater_bat, 'w', encoding='utf-8') as f:
-            f.write(bat_content)
-
-        # ── Python 측 사전 로그 (BAT 실행 전 디버깅용) ──
-        try:
-            with open(log_file, 'w', encoding='utf-8') as lf:
-                lf.write(f"[Python] updater_bat = {updater_bat}\n")
-                lf.write(f"[Python] bat 파일 존재 = {os.path.exists(updater_bat)}\n")
-                lf.write(f"[Python] bat 파일 크기 = {os.path.getsize(updater_bat)}\n")
-                lf.write(f"[Python] exe_dir = {exe_dir}\n")
-                lf.write(f"[Python] pid = {pid}\n")
-                lf.write(f"[Python] Popen 호출 직전\n")
-        except Exception:
-            pass
-
-        # BAT 실행 - DETACHED_PROCESS로 완전히 독립된 프로세스로 실행
-        DETACHED_PROCESS = 0x00000008
-        CREATE_NEW_PROCESS_GROUP = 0x00000200
-        CREATE_NO_WINDOW = 0x08000000
-        subprocess.Popen(
-            f'cmd /c "{updater_bat}"',
-            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-            cwd=exe_dir,
-            close_fds=True,
-        )
-
-        # 현재 앱 종료 (BAT가 충분히 시작된 후)
-        def _exit():
-            import time
-            time.sleep(2)  # BAT가 확실히 실행될 시간 확보
-            for w in webview.windows:
-                try:
-                    w.destroy()
-                except Exception:
-                    pass
-            os._exit(0)
-
-        threading.Thread(target=_exit, daemon=True).start()
-        return {'success': True}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
 
 # Windows: AppUserModelID 설정
 if sys.platform == 'win32':
@@ -588,15 +233,6 @@ class Api:
 
     def get_version(self):
         return __version__
-
-    # ---- Auto Update ----
-    def check_for_update(self):
-        """GitHub에서 최신 버전 확인"""
-        return check_update()
-
-    def apply_update(self, download_url):
-        """새 버전 다운로드 후 자동 교체"""
-        return download_and_apply_update(download_url)
 
     # ---- Years ----
     def get_years(self):
@@ -1395,6 +1031,110 @@ class Api:
         conn.close()
         return {'ok': True}
 
+    # ---- Update ----
+    def check_for_update(self):
+        """GitHub Releases API로 최신 버전 확인"""
+        import urllib.request
+        try:
+            req = urllib.request.Request(GITHUB_RELEASES_API, headers={
+                'User-Agent': 'MBO-Project-Leader',
+                'Accept': 'application/vnd.github.v3+json'
+            })
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+
+            latest_tag = data.get('tag_name', '')  # e.g. "v2026.03.06.1"
+            latest_version = latest_tag.lstrip('v')
+
+            # Release assets에서 EXE 다운로드 URL 찾기
+            exe_url = ''
+            for asset in data.get('assets', []):
+                if asset['name'].lower().endswith('.exe'):
+                    exe_url = asset['browser_download_url']
+                    break
+
+            needs_update = (latest_version != __version__) and bool(exe_url)
+
+            return {
+                'current_version': __version__,
+                'latest_version': latest_version,
+                'needs_update': needs_update,
+                'exe_url': exe_url,
+                'release_name': data.get('name', ''),
+            }
+        except Exception as e:
+            return {
+                'current_version': __version__,
+                'latest_version': '',
+                'needs_update': False,
+                'error': str(e)
+            }
+
+    def start_update(self, exe_url, latest_version):
+        """update.bat + update_message.bat 다운로드 후 업데이트 시작"""
+        import urllib.request
+        import subprocess
+
+        try:
+            update_dir = os.path.join(BASE_DIR, 'update')
+            os.makedirs(update_dir, exist_ok=True)
+
+            # 1) update.bat 다운로드 (BASE_DIR에)
+            update_bat_url = f"{GITHUB_RAW_BASE}/update.bat"
+            update_bat_path = os.path.join(BASE_DIR, 'update.bat')
+            req = urllib.request.Request(update_bat_url, headers={'User-Agent': 'MBO-Project-Leader'})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                with open(update_bat_path, 'wb') as f:
+                    f.write(resp.read())
+
+            if not os.path.exists(update_bat_path) or os.path.getsize(update_bat_path) == 0:
+                return {'error': 'update.bat 다운로드 실패'}
+
+            # 2) update_message.bat 다운로드 (update 폴더에)
+            msg_bat_url = f"{GITHUB_RAW_BASE}/update_message.bat"
+            msg_bat_path = os.path.join(update_dir, 'update_message.bat')
+            req = urllib.request.Request(msg_bat_url, headers={'User-Agent': 'MBO-Project-Leader'})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                with open(msg_bat_path, 'wb') as f:
+                    f.write(resp.read())
+
+            if not os.path.exists(msg_bat_path) or os.path.getsize(msg_bat_path) == 0:
+                return {'error': 'update_message.bat 다운로드 실패'}
+
+            # 3) update_info.txt 생성
+            if getattr(sys, 'frozen', False):
+                exe_name = os.path.basename(sys.executable)
+            else:
+                exe_name = 'MBO_Project_Leader.exe'
+
+            info_path = os.path.join(update_dir, 'update_info.txt')
+            with open(info_path, 'w', encoding='utf-8') as f:
+                f.write(f"EXE_URL={exe_url}\n")
+                f.write(f"VERSION={latest_version}\n")
+                f.write(f"EXE_NAME={exe_name}\n")
+
+            # 4) update_message.bat 실행 (사용자에게 진행 상태 표시)
+            subprocess.Popen(
+                ['cmd', '/c', msg_bat_path],
+                cwd=BASE_DIR,
+                creationflags=subprocess.CREATE_NEW_CONSOLE
+            )
+
+            # 5) update.bat 실행
+            subprocess.Popen(
+                ['cmd', '/c', update_bat_path],
+                cwd=BASE_DIR,
+                creationflags=subprocess.CREATE_NEW_CONSOLE
+            )
+
+            # 6) 앱 종료 (EXE 파일 잠금 해제를 위해)
+            import time
+            time.sleep(1)
+            os._exit(0)
+
+        except Exception as e:
+            return {'error': str(e)}
+
 
 # ============================================================
 # 엔트리 포인트
@@ -1433,11 +1173,9 @@ def _set_window_icon(icon_path):
         pass
 
 
-def _cleanup_update_files():
-    """앱 시작 3초 후 업데이트 임시 파일(_updater.bat, _update_progress.hta, _new_update.exe) 삭제"""
-    import time
-    time.sleep(3)
-    for fname in ['_updater.bat', '_update_progress.hta', '_new_update.exe']:
+def _cleanup_old_update():
+    """앱 시작 시 이전 업데이트 잔여 파일(update.bat, _MBO_old.exe) 정리"""
+    for fname in ['update.bat', '_MBO_old.exe']:
         fpath = os.path.join(BASE_DIR, fname)
         try:
             if os.path.exists(fpath):
@@ -1448,13 +1186,11 @@ def _cleanup_update_files():
 
 def main():
     init_db()
+    _cleanup_old_update()
     api = Api()
     html_path = os.path.join(APP_DIR, 'index.html')
     icon_path = os.path.abspath(os.path.join(APP_DIR, 'app_icon.ico'))
     icon = icon_path if os.path.exists(icon_path) else None
-
-    # 업데이트 임시 파일 정리 (시작 3초 후)
-    threading.Thread(target=_cleanup_update_files, daemon=True).start()
 
     window = webview.create_window(
         f'MBO Project Leader v{__version__}',
