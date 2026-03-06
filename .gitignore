@@ -5,6 +5,8 @@
 !.gitignore
 !deploy_web.bat
 !DEPLOY_GUIDE.md
+!update.bat
+!update_message.hta
 
 # src_web 내부에서 불필요한 파일 제외
 src_web/__pycache__/

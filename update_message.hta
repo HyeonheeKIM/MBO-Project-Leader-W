@@ -1,0 +1,113 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Update</title>
+<HTA:APPLICATION
+    ID="UpdateMsg"
+    BORDER="none"
+    BORDERSTYLE="none"
+    CAPTION="no"
+    SHOWINTASKBAR="no"
+    SINGLEINSTANCE="yes"
+    SYSMENU="no"
+    WINDOWSTATE="normal"
+    SCROLL="no"
+    MAXIMIZEBUTTON="no"
+    MINIMIZEBUTTON="no"
+/>
+<style>
+    html, body {
+        margin: 0; padding: 0;
+        width: 100%; height: 100%;
+        overflow: hidden;
+        background: #e8edf2;
+        font-family: Malgun Gothic, sans-serif;
+    }
+    table.wrap {
+        width: 100%; height: 100%;
+        border: 0; border-collapse: collapse;
+    }
+    td.center {
+        text-align: center;
+        vertical-align: middle;
+    }
+    .box {
+        display: inline-block;
+        text-align: center;
+        padding: 28px 48px;
+        background: #ffffff;
+        border: 1px solid #dde3ea;
+    }
+    .icon {
+        font-size: 28px;
+        margin-bottom: 12px;
+        color: #4a90d9;
+    }
+    .msg {
+        font-size: 15px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 6px;
+    }
+    .sub {
+        font-size: 12px;
+        color: #7f8c8d;
+    }
+    .dots {
+        margin-top: 14px;
+        text-align: center;
+        letter-spacing: 4px;
+    }
+    .dot {
+        display: inline-block;
+        width: 8px; height: 8px;
+        margin: 0 3px;
+        background: #ccd5de;
+        font-size: 0;
+    }
+    .dot-active {
+        background: #4a90d9;
+    }
+</style>
+<script language="VBScript">
+Dim dotIndex
+dotIndex = 0
+
+Sub Window_OnLoad
+    window.resizeTo 340, 180
+    Dim sw, sh
+    sw = window.screen.availWidth
+    sh = window.screen.availHeight
+    window.moveTo (sw - 340) / 2, (sh - 180) / 2
+    window.setInterval "AnimateDots", 400
+End Sub
+
+Sub AnimateDots
+    Dim i
+    For i = 0 To 2
+        If i = dotIndex Then
+            document.getElementById("d" & i).className = "dot dot-active"
+        Else
+            document.getElementById("d" & i).className = "dot"
+        End If
+    Next
+    dotIndex = dotIndex + 1
+    If dotIndex > 2 Then dotIndex = 0
+End Sub
+</script>
+</head>
+<body>
+    <table class="wrap"><tr><td class="center">
+        <div class="box">
+            <div class="icon">&#9881;</div>
+            <div class="msg">&#50629;&#45936;&#51060;&#53944;&#44032; &#51652;&#54665; &#51473;&#51077;&#45768;&#45796;.</div>
+            <div class="sub">&#51104;&#49884;&#47564; &#44592;&#45796;&#47140; &#51452;&#49464;&#50836;...</div>
+            <div class="dots">
+                <span class="dot" id="d0">&#160;</span>
+                <span class="dot" id="d1">&#160;</span>
+                <span class="dot" id="d2">&#160;</span>
+            </div>
+        </div>
+    </td></tr></table>
+</body>
+</html>
