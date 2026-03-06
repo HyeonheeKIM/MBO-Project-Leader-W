@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.11"
+__version__ = "2026.03.05.12"
 
 import os
 import sys
@@ -157,9 +157,10 @@ echo [%date% %time%] CODEPAGE = 65001 >> "%LOG%"
 :: ─── 환경 진단 ───
 echo [%date% %time%] OS 버전: >> "%LOG%"
 ver >> "%LOG%" 2>&1
-echo [%date% %time%] PowerShell 버전 확인 >> "%LOG%"
-powershell -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" >> "%LOG%" 2>&1
-echo [%date% %time%] PowerShell 버전 확인 완료 (errorlevel=%errorlevel%) >> "%LOG%"
+echo [%date% %time%] certutil 확인 >> "%LOG%"
+where certutil >> "%LOG%" 2>&1
+echo [%date% %time%] bitsadmin 확인 >> "%LOG%"
+where bitsadmin >> "%LOG%" 2>&1
 
 :: ─── 안내 팝업 ───
 start "" mshta.exe "{progress_hta}"
@@ -196,13 +197,13 @@ if exist "{new_exe_temp}" (
     del /f /q "{new_exe_temp}" >nul 2>&1
 )
 
-:: ─── 새 EXE 다운로드 (PowerShell, 방법 1) ───
-echo [%date% %time%] [방법1] PowerShell Invoke-WebRequest 다운로드 시작 >> "%LOG%"
+:: ─── 새 EXE 다운로드 (certutil, 방법 1) ───
+echo [%date% %time%] [방법1] certutil 다운로드 시작 >> "%LOG%"
 echo [%date% %time%] URL = {download_url} >> "%LOG%"
 echo [%date% %time%] 저장 위치 = {new_exe_temp} >> "%LOG%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Write-Output ('TLS Protocol set: ' + [Net.ServicePointManager]::SecurityProtocol); Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 300; Write-Output 'Download OK' }} catch {{ Write-Output ('ERROR: ' + $_.Exception.Message); Write-Output ('Type: ' + $_.Exception.GetType().FullName); if ($_.Exception.InnerException) {{ Write-Output ('Inner: ' + $_.Exception.InnerException.Message) }}; exit 1 }}" >> "%LOG%" 2>&1
+certutil -urlcache -split -f "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
 set "DL_ERR=%errorlevel%"
-echo [%date% %time%] PowerShell 종료코드 = %DL_ERR% >> "%LOG%"
+echo [%date% %time%] certutil 종료코드 = %DL_ERR% >> "%LOG%"
 
 :: 다운로드 파일 존재 확인
 if exist "{new_exe_temp}" (
@@ -211,11 +212,15 @@ if exist "{new_exe_temp}" (
 )
 echo [%date% %time%] [방법1] 실패 - 파일 없음 >> "%LOG%"
 
-:: ─── 새 EXE 다운로드 (certutil, 방법 2) ───
-echo [%date% %time%] [방법2] certutil 다운로드 시작 >> "%LOG%"
-certutil -urlcache -split -f "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
+:: certutil 캐시 정리 후 재시도
+echo [%date% %time%] certutil 캐시 정리 >> "%LOG%"
+certutil -urlcache -delete "{download_url}" >> "%LOG%" 2>&1
+
+:: ─── 새 EXE 다운로드 (bitsadmin, 방법 2) ───
+echo [%date% %time%] [방법2] bitsadmin 다운로드 시작 >> "%LOG%"
+bitsadmin /transfer "MBO_Update" /download /priority foreground "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
 set "DL_ERR2=%errorlevel%"
-echo [%date% %time%] certutil 종료코드 = %DL_ERR2% >> "%LOG%"
+echo [%date% %time%] bitsadmin 종료코드 = %DL_ERR2% >> "%LOG%"
 
 if exist "{new_exe_temp}" (
     echo [%date% %time%] [방법2] 파일 생성 확인됨 >> "%LOG%"
@@ -223,11 +228,11 @@ if exist "{new_exe_temp}" (
 )
 echo [%date% %time%] [방법2] 실패 - 파일 없음 >> "%LOG%"
 
-:: ─── 새 EXE 다운로드 (PowerShell WebClient, 방법 3) ───
-echo [%date% %time%] [방법3] PowerShell WebClient 다운로드 시작 >> "%LOG%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','MBO-Updater'); $wc.DownloadFile('{download_url}','{new_exe_temp}'); Write-Output 'WebClient Download OK' }} catch {{ Write-Output ('ERROR: ' + $_.Exception.Message); if ($_.Exception.InnerException) {{ Write-Output ('Inner: ' + $_.Exception.InnerException.Message) }}; exit 1 }}" >> "%LOG%" 2>&1
+:: ─── 새 EXE 다운로드 (certutil 재시도, 방법 3) ───
+echo [%date% %time%] [방법3] certutil 재시도 (캐시 정리 후) >> "%LOG%"
+certutil -urlcache -split -f "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
 set "DL_ERR3=%errorlevel%"
-echo [%date% %time%] WebClient 종료코드 = %DL_ERR3% >> "%LOG%"
+echo [%date% %time%] certutil 재시도 종료코드 = %DL_ERR3% >> "%LOG%"
 
 if exist "{new_exe_temp}" (
     echo [%date% %time%] [방법3] 파일 생성 확인됨 >> "%LOG%"
