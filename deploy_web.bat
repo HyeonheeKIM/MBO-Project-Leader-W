@@ -6,16 +6,20 @@ echo   MBO Project Leader - 배포 스크립트
 echo ============================================
 echo.
 
-:: app.py에서 현재 버전 읽기
+:: version.dat에서 현재 버전 읽기
 set "VERSION="
-for /f "tokens=2 delims== " %%a in ('findstr /c:"__version__ =" src_web\app.py') do set "VERSION=%%a"
-set "VERSION=%VERSION:"=%"
-if "%VERSION%"=="" (
-    echo [오류] src_web\app.py에서 __version__을 읽을 수 없습니다.
-    echo        __version__ = "x.x.x" 형식으로 설정되어 있는지 확인하세요.
-    pause
-    exit /b 1
-)
+if not exist "src_web\version.dat" goto NO_VERSION
+set /p VERSION=<src_web\version.dat
+if "%VERSION%"=="" goto NO_VERSION
+goto VERSION_OK
+
+:NO_VERSION
+echo [오류] src_web\version.dat 파일을 찾을 수 없거나 비어있습니다.
+echo        version.dat에 버전을 기입하세요 (예: 2026.03.06.1)
+pause
+exit /b 1
+
+:VERSION_OK
 echo https://github.com/HyeonheeKIM/MBO-Project-Leader-W/actions
 echo 현재 버전: v%VERSION%
 echo.

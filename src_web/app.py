@@ -6,8 +6,6 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.20"
-
 import os
 import sys
 import json
@@ -16,6 +14,26 @@ from datetime import datetime, date, timedelta
 import re as _re
 import threading
 import webview
+
+# ============================================================
+# 버전 (version.dat에서 읽기)
+# ============================================================
+def _read_version():
+    """version.dat 파일에서 버전 문자열을 읽어온다."""
+    if getattr(sys, 'frozen', False):
+        _base = os.path.dirname(sys.executable)
+        _app = sys._MEIPASS
+    else:
+        _base = os.path.dirname(os.path.abspath(__file__))
+        _app = _base
+    for d in (_base, _app):
+        vf = os.path.join(d, 'version.dat')
+        if os.path.exists(vf):
+            with open(vf, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+    return '0.0.0.0'
+
+__version__ = _read_version()
 
 # ============================================================
 # GitHub 설정
@@ -1029,6 +1047,49 @@ class Api:
         conn.close()
         return {'ok': True}
 
+    # ---- Update Check ----
+    def check_for_update(self):
+        """GitHub Releases API로 최신 버전 확인 (경량)"""
+        import urllib.request
+        try:
+            url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'MBO-Project-Leader',
+                'Accept': 'application/vnd.github.v3+json',
+            })
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            tag = data.get('tag_name', '')
+            latest_version = tag.lstrip('v')
+            current_version = __version__
+            if latest_version > current_version:
+                # 릴리스 에셋에서 exe URL 찾기
+                exe_url = ''
+                for asset in data.get('assets', []):
+                    if asset['name'].lower().endswith('.exe'):
+                        exe_url = asset['browser_download_url']
+                        break
+                if not exe_url:
+                    exe_url = f"https://github.com/{GITHUB_REPO}/releases/latest/download/MBO_Project_Leader.exe"
+                return {
+                    'needs_update': True,
+                    'current_version': current_version,
+                    'latest_version': latest_version,
+                    'exe_url': exe_url,
+                }
+            return {'needs_update': False}
+        except Exception:
+            return {'needs_update': False}
+
+    def start_update(self, exe_url, latest_version):
+        """업데이트 폴더 생성"""
+        try:
+            update_dir = os.path.join(BASE_DIR, 'update')
+            os.makedirs(update_dir, exist_ok=True)
+            return {'ok': True, 'update_dir': update_dir}
+        except Exception as e:
+            return {'error': str(e)}
+
 
 # ============================================================
 # 엔트리 포인트
@@ -1068,6 +1129,14 @@ def _set_window_icon(icon_path):
 
 
 def main():
+    # update.bat 파일이 있으면 삭제
+    update_dat = os.path.join(BASE_DIR, 'update.bat')
+    if os.path.exists(update_dat):
+        try:
+            os.remove(update_dat)
+        except Exception:
+            pass
+
     init_db()
     api = Api()
     html_path = os.path.join(APP_DIR, 'index.html')

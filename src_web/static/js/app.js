@@ -1457,29 +1457,30 @@ function showUpdateDialog(info) {
     overlay.id = 'updateOverlay';
     overlay.className = 'modal-overlay show';
     overlay.innerHTML = `
-        <div class="modal" style="max-width:420px;">
+        <div class="modal-container" style="max-width:420px;">
             <div class="modal-header">
-                <h3>\uD83D\uDD04 \uC5C5\uB370\uC774\uD2B8 \uC548\uB0B4</h3>
+                <h3>🔄 업데이트 안내</h3>
+                <button class="modal-close" onclick="closeUpdateDialog()">&times;</button>
             </div>
-            <div class="modal-body" style="padding:20px;" id="updateDialogBody">
-                <p style="margin-bottom:12px;">\uC0C8\uB85C\uC6B4 \uBC84\uC804\uC774 \uCD9C\uC2DC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.</p>
-                <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:16px;">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                        <span style="color:#94a3b8;">\uD604\uC7AC \uBC84\uC804</span>
-                        <span>v${info.current_version}</span>
+            <div class="modal-body" id="updateDialogBody">
+                <p style="margin-bottom:14px;font-size:0.95rem;color:var(--text);">새로운 버전이 출시되었습니다.</p>
+                <div style="background:var(--glass-bg-subtle);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-dim);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+                        <span style="color:var(--text-dim);font-size:0.88rem;">현재 버전</span>
+                        <span style="font-weight:600;">v${info.current_version}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;">
-                        <span style="color:#94a3b8;">\uCD5C\uC2E0 \uBC84\uC804</span>
-                        <span style="color:#10b981;font-weight:600;">v${info.latest_version}</span>
+                        <span style="color:var(--text-dim);font-size:0.88rem;">최신 버전</span>
+                        <span style="color:var(--accent-green);font-weight:700;">v${info.latest_version}</span>
                     </div>
                 </div>
-                <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0;">
-                    \uC5C5\uB370\uC774\uD2B8\uB97C \uC9C4\uD589\uD558\uBA74 \uD504\uB85C\uADF8\uB7A8\uC774 \uC7AC\uC2DC\uC791\uB429\uB2C8\uB2E4.
+                <p style="color:var(--text-dim);font-size:0.83rem;margin-bottom:0;">
+                    업데이트를 진행하면 프로그램이 재시작됩니다.
                 </p>
             </div>
-            <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;" id="updateDialogFooter">
-                <button class="btn" onclick="closeUpdateDialog()">\uB098\uC911\uC5D0</button>
-                <button class="btn btn-blue" onclick="doUpdate('${info.exe_url}','${info.latest_version}')">\uC5C5\uB370\uC774\uD2B8</button>
+            <div style="display:flex;gap:8px;justify-content:flex-end;padding:6px 26px 22px;" id="updateDialogFooter">
+                <button class="btn" onclick="closeUpdateDialog()">나중에</button>
+                <button class="btn btn-blue" onclick="doUpdate('${info.exe_url}','${info.latest_version}')">업데이트</button>
             </div>
         </div>
     `;
