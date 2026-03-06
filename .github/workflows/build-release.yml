@@ -38,6 +38,7 @@ jobs:
             --add-data "static;static" `
             --add-data "app_icon.ico;." `
             --add-data "notification.md;." `
+            --add-data "version.dat;." `
             --hidden-import "webview" `
             --hidden-import "sqlite3" `
             --hidden-import "clr" `

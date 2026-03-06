@@ -1,5 +1,5 @@
 @echo off
-chcp 65001 >nul
+chcp 65001 >nul 2>nul
 setlocal enabledelayedexpansion
 
 :: ============================================
@@ -12,10 +12,15 @@ set "UPDATE_DIR=!BASE_DIR!\update"
 set "LOG=!UPDATE_DIR!\update_log.txt"
 set "CONFIG=!UPDATE_DIR!\update_config.txt"
 
+:: Ensure update directory exists
+if not exist "!UPDATE_DIR!" mkdir "!UPDATE_DIR!" 2>nul
+
 :: Initialize log
 echo ============================================> "!LOG!"
 echo   MBO Project Leader - Update Log>> "!LOG!"
 echo   Started: %date% %time%>> "!LOG!"
+echo   BASE_DIR: !BASE_DIR!>> "!LOG!"
+echo   UPDATE_DIR: !UPDATE_DIR!>> "!LOG!"
 echo ============================================>> "!LOG!"
 echo.>> "!LOG!"
 
@@ -60,7 +65,7 @@ if not errorlevel 1 (
         echo [FAIL] App did not close after 30 seconds>> "!LOG!"
         goto ERROR
     )
-    timeout /t 1 /nobreak >nul
+    ping 127.0.0.1 -n 2 >nul
     goto WAIT_LOOP
 )
 echo [RESULT] App closed (waited !WAIT_COUNT! seconds)>> "!LOG!"
@@ -135,7 +140,7 @@ echo [TRY] Deleting update folder...>> "!LOG!"
 echo ============================================>> "!LOG!"
 echo   Update completed: %date% %time%>> "!LOG!"
 echo ============================================>> "!LOG!"
-timeout /t 2 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 rd /s /q "!UPDATE_DIR!" 2>nul
 exit /b 0
 

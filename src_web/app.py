@@ -1115,11 +1115,12 @@ class Api:
 
             # 4) update.bat 실행 (백그라운드, 앱 종료 대기 후 업데이트 진행)
             update_bat = os.path.join(BASE_DIR, 'update.bat')
-            DETACHED_PROCESS = 0x00000008
+            CREATE_NO_WINDOW = 0x08000000
             CREATE_NEW_PROCESS_GROUP = 0x00000200
             subprocess.Popen(
-                update_bat, cwd=BASE_DIR,
-                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                ['cmd', '/c', update_bat],
+                cwd=BASE_DIR,
+                creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
             )
 
             return {'ok': True, 'update_dir': update_dir}

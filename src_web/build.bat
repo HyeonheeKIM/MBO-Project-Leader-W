@@ -33,6 +33,7 @@ pyinstaller ^
     --add-data "index.html;." ^
     --add-data "static;static" ^
     --add-data "notification.md;." ^
+    --add-data "version.dat;." ^
     --hidden-import "webview" ^
     --hidden-import "sqlite3" ^
     --hidden-import "clr" ^
