@@ -6,7 +6,7 @@ pywebview 기반 로컬 데스크탑 애플리케이션
 SQLite로 로컬 저장합니다.
 """
 
-__version__ = "2026.03.05.10"
+__version__ = "2026.03.05.11"
 
 import os
 import sys
@@ -140,16 +140,26 @@ var d=0;setInterval(function(){d=(d+1)%4;document.getElementById('dots').innerTe
         # ── _updater.bat ──
         # BAT이 다운로드 → old 삭제 → new 실행까지 전부 담당
         log_file = os.path.join(exe_dir, 'bat_log.txt')
+        # 8.3 짧은 경로를 사용하여 한글 경로 문제 방지
         bat_content = f'''@echo off
 chcp 65001 >nul
 set "LOG={log_file}"
-set "LOG_PS={log_file}"
 
 echo [%date% %time%] ========== 업데이트 시작 ========== > "%LOG%"
 echo [%date% %time%] current_exe = {current_exe} >> "%LOG%"
 echo [%date% %time%] new_exe_temp = {new_exe_temp} >> "%LOG%"
 echo [%date% %time%] download_url = {download_url} >> "%LOG%"
 echo [%date% %time%] PID = {pid} >> "%LOG%"
+echo [%date% %time%] exe_dir = {exe_dir} >> "%LOG%"
+echo [%date% %time%] TEMP = %TEMP% >> "%LOG%"
+echo [%date% %time%] CODEPAGE = 65001 >> "%LOG%"
+
+:: ─── 환경 진단 ───
+echo [%date% %time%] OS 버전: >> "%LOG%"
+ver >> "%LOG%" 2>&1
+echo [%date% %time%] PowerShell 버전 확인 >> "%LOG%"
+powershell -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" >> "%LOG%" 2>&1
+echo [%date% %time%] PowerShell 버전 확인 완료 (errorlevel=%errorlevel%) >> "%LOG%"
 
 :: ─── 안내 팝업 ───
 start "" mshta.exe "{progress_hta}"
@@ -157,10 +167,20 @@ echo [%date% %time%] HTA 팝업 실행 >> "%LOG%"
 
 :: ─── old.exe(PID {pid}) 종료 대기 ───
 echo [%date% %time%] old.exe 종료 대기 시작 (PID {pid}) >> "%LOG%"
+set /a _owc=0
 :wait_old
 timeout /t 1 /nobreak >nul
 tasklist /FI "PID eq {pid}" /NH 2>nul | find /i "{exe_name}" >nul
-if not errorlevel 1 goto wait_old
+if not errorlevel 1 (
+    set /a _owc+=1
+    echo [%date% %time%] old.exe 아직 실행 중... (%_owc%초) >> "%LOG%"
+    if %_owc% geq 60 (
+        echo [%date% %time%] [오류] old.exe 종료 대기 타임아웃 (60초) >> "%LOG%"
+        taskkill /f /pid {pid} >nul 2>&1
+        timeout /t 2 /nobreak >nul
+    )
+    if %_owc% lss 65 goto wait_old
+)
 echo [%date% %time%] old.exe 종료 확인 >> "%LOG%"
 timeout /t 2 /nobreak >nul
 
@@ -170,20 +190,71 @@ echo [%date% %time%] _MEI 정리 시작 >> "%LOG%"
 timeout /t 1 /nobreak >nul
 echo [%date% %time%] _MEI 정리 완료 >> "%LOG%"
 
-:: ─── 새 EXE 다운로드 (PowerShell) ───
-echo [%date% %time%] 다운로드 시작 >> "%LOG%"
-powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 120 }} catch {{ $_.Exception.Message | Out-File -Append '%LOG_PS%'; exit 1 }}"
-if errorlevel 1 (
-    echo [%date% %time%] [오류] 다운로드 실패 (errorlevel=%errorlevel%) >> "%LOG%"
-    taskkill /f /im mshta.exe >nul 2>&1
-    if exist "{new_exe_temp}" del /f /q "{new_exe_temp}" >nul 2>&1
-    goto end
+:: ─── 기존 임시 파일 정리 ───
+if exist "{new_exe_temp}" (
+    echo [%date% %time%] 기존 _new_update.exe 삭제 >> "%LOG%"
+    del /f /q "{new_exe_temp}" >nul 2>&1
 )
+
+:: ─── 새 EXE 다운로드 (PowerShell, 방법 1) ───
+echo [%date% %time%] [방법1] PowerShell Invoke-WebRequest 다운로드 시작 >> "%LOG%"
+echo [%date% %time%] URL = {download_url} >> "%LOG%"
+echo [%date% %time%] 저장 위치 = {new_exe_temp} >> "%LOG%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Write-Output ('TLS Protocol set: ' + [Net.ServicePointManager]::SecurityProtocol); Invoke-WebRequest -Uri '{download_url}' -OutFile '{new_exe_temp}' -UseBasicParsing -TimeoutSec 300; Write-Output 'Download OK' }} catch {{ Write-Output ('ERROR: ' + $_.Exception.Message); Write-Output ('Type: ' + $_.Exception.GetType().FullName); if ($_.Exception.InnerException) {{ Write-Output ('Inner: ' + $_.Exception.InnerException.Message) }}; exit 1 }}" >> "%LOG%" 2>&1
+set "DL_ERR=%errorlevel%"
+echo [%date% %time%] PowerShell 종료코드 = %DL_ERR% >> "%LOG%"
+
+:: 다운로드 파일 존재 확인
+if exist "{new_exe_temp}" (
+    echo [%date% %time%] [방법1] 파일 생성 확인됨 >> "%LOG%"
+    goto dl_done
+)
+echo [%date% %time%] [방법1] 실패 - 파일 없음 >> "%LOG%"
+
+:: ─── 새 EXE 다운로드 (certutil, 방법 2) ───
+echo [%date% %time%] [방법2] certutil 다운로드 시작 >> "%LOG%"
+certutil -urlcache -split -f "{download_url}" "{new_exe_temp}" >> "%LOG%" 2>&1
+set "DL_ERR2=%errorlevel%"
+echo [%date% %time%] certutil 종료코드 = %DL_ERR2% >> "%LOG%"
+
+if exist "{new_exe_temp}" (
+    echo [%date% %time%] [방법2] 파일 생성 확인됨 >> "%LOG%"
+    goto dl_done
+)
+echo [%date% %time%] [방법2] 실패 - 파일 없음 >> "%LOG%"
+
+:: ─── 새 EXE 다운로드 (PowerShell WebClient, 방법 3) ───
+echo [%date% %time%] [방법3] PowerShell WebClient 다운로드 시작 >> "%LOG%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try {{ [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','MBO-Updater'); $wc.DownloadFile('{download_url}','{new_exe_temp}'); Write-Output 'WebClient Download OK' }} catch {{ Write-Output ('ERROR: ' + $_.Exception.Message); if ($_.Exception.InnerException) {{ Write-Output ('Inner: ' + $_.Exception.InnerException.Message) }}; exit 1 }}" >> "%LOG%" 2>&1
+set "DL_ERR3=%errorlevel%"
+echo [%date% %time%] WebClient 종료코드 = %DL_ERR3% >> "%LOG%"
+
+if exist "{new_exe_temp}" (
+    echo [%date% %time%] [방법3] 파일 생성 확인됨 >> "%LOG%"
+    goto dl_done
+)
+echo [%date% %time%] [방법3] 실패 - 파일 없음 >> "%LOG%"
+
+:: ─── 모든 다운로드 방법 실패 ───
+echo [%date% %time%] [오류] 모든 다운로드 방법 실패 >> "%LOG%"
+echo [%date% %time%] 네트워크 연결 상태 확인: >> "%LOG%"
+ping -n 1 github.com >> "%LOG%" 2>&1
+echo [%date% %time%] DNS 확인: >> "%LOG%"
+nslookup github.com >> "%LOG%" 2>&1
+taskkill /f /im mshta.exe >nul 2>&1
+goto end
+
+:dl_done
 echo [%date% %time%] 다운로드 완료 >> "%LOG%"
 
 :: ─── 다운로드 검증 (5MB 이상) ───
 for %%F in ("{new_exe_temp}") do set FSIZE=%%~zF
 echo [%date% %time%] 파일 크기 = %FSIZE% bytes >> "%LOG%"
+if not defined FSIZE (
+    echo [%date% %time%] [오류] 파일 크기를 읽을 수 없음 >> "%LOG%"
+    taskkill /f /im mshta.exe >nul 2>&1
+    goto end
+)
 if %FSIZE% LSS 5242880 (
     echo [%date% %time%] [오류] 파일 손상 (크기: %FSIZE% bytes, 5MB 미만) >> "%LOG%"
     taskkill /f /im mshta.exe >nul 2>&1
@@ -196,29 +267,44 @@ echo [%date% %time%] 파일 검증 통과 >> "%LOG%"
 echo [%date% %time%] old.exe 삭제 시도: {current_exe} >> "%LOG%"
 del /f /q "{current_exe}" >nul 2>&1
 if exist "{current_exe}" (
-    echo [%date% %time%] old.exe 아직 존재, 2초 후 재시도 >> "%LOG%"
-    timeout /t 2 /nobreak >nul
+    echo [%date% %time%] old.exe 아직 존재, 3초 후 재시도 >> "%LOG%"
+    timeout /t 3 /nobreak >nul
     del /f /q "{current_exe}" >nul 2>&1
 )
 if exist "{current_exe}" (
-    echo [%date% %time%] [오류] old.exe 삭제 실패 >> "%LOG%"
+    echo [%date% %time%] old.exe 2차 실패, taskkill 후 재시도 >> "%LOG%"
+    taskkill /f /im "{exe_name}" >nul 2>&1
+    timeout /t 3 /nobreak >nul
+    del /f /q "{current_exe}" >nul 2>&1
+)
+if exist "{current_exe}" (
+    echo [%date% %time%] [오류] old.exe 삭제 최종 실패 >> "%LOG%"
+    echo [%date% %time%] 실행 중인 프로세스 목록: >> "%LOG%"
+    tasklist /FI "IMAGENAME eq {exe_name}" >> "%LOG%" 2>&1
+    taskkill /f /im mshta.exe >nul 2>&1
+    goto end
 ) else (
     echo [%date% %time%] old.exe 삭제 성공 >> "%LOG%"
 )
 
 :: ─── new.exe → 원래 이름으로 이동 ───
 echo [%date% %time%] move 시작: _new_update.exe → {exe_name} >> "%LOG%"
-move /Y "{new_exe_temp}" "{current_exe}" >nul 2>&1
+move /Y "{new_exe_temp}" "{current_exe}" >> "%LOG%" 2>&1
+echo [%date% %time%] move 종료코드 = %errorlevel% >> "%LOG%"
 if not exist "{current_exe}" (
     echo [%date% %time%] [오류] 파일 교체 실패 (move 후 {exe_name} 없음) >> "%LOG%"
+    echo [%date% %time%] 디렉토리 내용: >> "%LOG%"
+    dir "{exe_dir}" >> "%LOG%" 2>&1
     taskkill /f /im mshta.exe >nul 2>&1
     goto end
 )
 echo [%date% %time%] move 성공 >> "%LOG%"
+for %%F in ("{current_exe}") do echo [%date% %time%] 새 파일 크기 = %%~zF bytes >> "%LOG%"
 
 :: ─── 새 버전 실행 ───
 echo [%date% %time%] 새 EXE 실행: {current_exe} >> "%LOG%"
 start "" "{current_exe}"
+echo [%date% %time%] start 종료코드 = %errorlevel% >> "%LOG%"
 
 :: ─── 새 EXE 프로세스 확인 대기 (최대 30초) ───
 set /a _wc=0
@@ -230,14 +316,22 @@ if errorlevel 1 (
     echo [%date% %time%] 새 EXE 대기 중... (%_wc%초) >> "%LOG%"
     if %_wc% lss 30 goto wait_new
 )
+if %_wc% geq 30 (
+    echo [%date% %time%] [경고] 새 EXE 프로세스 30초 내 미감지 >> "%LOG%"
+) else (
+    echo [%date% %time%] 새 EXE 프로세스 확인됨 (%_wc%초 후) >> "%LOG%"
+)
 
 :: ─── 새 프로그램 실행 확인 후 2초 대기, 팝업 닫기 ───
-echo [%date% %time%] 새 EXE 프로세스 확인됨 >> "%LOG%"
 timeout /t 2 /nobreak >nul
 taskkill /f /im mshta.exe >nul 2>&1
 echo [%date% %time%] ========== 업데이트 완료 ========== >> "%LOG%"
 
+:: ─── 임시 파일 정리 ───
+if exist "{progress_hta}" del /f /q "{progress_hta}" >nul 2>&1
+
 :end
+echo [%date% %time%] BAT 종료 >> "%LOG%"
 exit
 '''
         with open(updater_bat, 'w', encoding='utf-8') as f:
