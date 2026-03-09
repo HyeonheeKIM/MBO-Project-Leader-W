@@ -59,6 +59,10 @@ if not exist "!DOWNLOAD_PATH!" (
 )
 echo   Done
 echo.
+echo   Downloaded file: !DOWNLOAD_PATH!
+echo   Check the file, then press any key to continue...
+pause >nul
+echo.
 
 :: Delete existing program
 echo [4/6] Deleting old program...

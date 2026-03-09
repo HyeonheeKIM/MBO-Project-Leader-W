@@ -25,6 +25,12 @@ jobs:
         run: |
           pip install pywebview pyinstaller
 
+      - name: Verify version.dat
+        working-directory: src_web
+        run: |
+          echo "version.dat content:"
+          type version.dat
+
       - name: Build EXE
         working-directory: src_web
         run: |
