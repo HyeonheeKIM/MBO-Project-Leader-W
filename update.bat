@@ -12,7 +12,7 @@ echo ==============================
 echo.
 
 :: Read config (line 1: EXE_URL, line 2: EXE_PATH)
-echo [1/6] Reading config...
+echo [1/7] Reading config...
 if not exist "!CONFIG!" (
     echo [FAIL] Config not found: !CONFIG!
     goto ERROR
@@ -40,14 +40,14 @@ for %%F in ("!EXE_PATH!") do set "EXE_NAME=%%~nxF"
 set "DOWNLOAD_PATH=!UPDATE_DIR!\!EXE_NAME!"
 
 :: Kill app
-echo [2/6] Killing app (!EXE_NAME!)...
+echo [2/7] Killing app (!EXE_NAME!)...
 taskkill /F /IM "!EXE_NAME!" >nul 2>&1
 ping 127.0.0.1 -n 3 >nul
 echo   Done
 echo.
 
 :: Download latest exe
-echo [3/6] Downloading latest version...
+echo [3/7] Downloading latest version...
 curl -L -o "!DOWNLOAD_PATH!" "!EXE_URL!" --ssl-no-revoke -s
 if errorlevel 1 (
     echo   [FAIL] Download failed
@@ -60,8 +60,23 @@ if not exist "!DOWNLOAD_PATH!" (
 echo   Done
 echo.
 
+:: Download execute.bat
+echo [4/7] Downloading execute.bat...
+set "EXECUTE_URL=https://raw.githubusercontent.com/HyeonheeKIM/MBO-Project-Leader-W/main/execute.bat"
+curl -L -o "!BASE_DIR!\execute.bat" "!EXECUTE_URL!" --ssl-no-revoke -s
+if errorlevel 1 (
+    echo   [FAIL] execute.bat download failed
+    goto ERROR
+)
+if not exist "!BASE_DIR!\execute.bat" (
+    echo   [FAIL] execute.bat not found
+    goto ERROR
+)
+echo   Done
+echo.
+
 :: Delete existing program
-echo [4/6] Deleting old program...
+echo [5/7] Deleting old program...
 if exist "!EXE_PATH!" (
     del /f /q "!EXE_PATH!" 2>nul
     if exist "!EXE_PATH!" (
@@ -73,7 +88,7 @@ echo   Done
 echo.
 
 :: Move downloaded exe to target path
-echo [5/6] Moving new program...
+echo [6/7] Moving new program...
 move /Y "!DOWNLOAD_PATH!" "!EXE_PATH!" >nul 2>&1
 if not exist "!EXE_PATH!" (
     echo   [FAIL] Move failed
@@ -83,7 +98,7 @@ echo   Done
 echo.
 
 :: Launch via execute.bat
-echo [6/6] Launching new program...
+echo [7/7] Launching new program...
 start "" "!BASE_DIR!\execute.bat"
 echo   Done
 echo.
