@@ -1117,7 +1117,7 @@ class Api:
             update_bat = os.path.join(BASE_DIR, 'update.bat')
             CREATE_NEW_PROCESS_GROUP = 0x00000200
             CREATE_NO_WINDOW = 0x08000000
-            DEBUG_UPDATE = False  # True: 콘솔 표시, False: 콘솔 숨김
+            DEBUG_UPDATE = True  # True: 콘솔 표시, False: 콘솔 숨김
             flags = CREATE_NEW_PROCESS_GROUP if DEBUG_UPDATE else CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
             subprocess.Popen(
                 ['cmd', '/c', update_bat],
