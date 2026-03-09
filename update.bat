@@ -19,11 +19,9 @@ if not exist "!CONFIG!" (
 )
 set "EXE_URL="
 set "EXE_PATH="
-set "LINE_NUM=0"
-for /f "usebackq delims=" %%a in ("!CONFIG!") do (
-    set /a LINE_NUM+=1
-    if !LINE_NUM!==1 set "EXE_URL=%%a"
-    if !LINE_NUM!==2 set "EXE_PATH=%%a"
+<"!CONFIG!" (
+    set /p EXE_URL=
+    set /p EXE_PATH=
 )
 if "!EXE_URL!"=="" (
     echo [FAIL] EXE_URL is empty
