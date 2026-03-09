@@ -18,13 +18,8 @@ if "!EXE_PATH!"=="" exit /b 1
 :: Delete update folder
 rd /s /q "!BASE_DIR!\update" 2>nul
 
-:: Clean any remaining _MEI* temp folders from previous runs
-for /d %%D in ("%TEMP%\_MEI*") do (
-    rd /s /q "%%D" 2>nul
-)
-
 :: Wait for filesystem to fully settle
-ping 127.0.0.1 -n 2 >nul
+ping 127.0.0.1 -n 3 >nul
 
 :: Run the program
 start "" "!EXE_PATH!"
