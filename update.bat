@@ -59,10 +59,6 @@ if not exist "!DOWNLOAD_PATH!" (
 )
 echo   Done
 echo.
-echo   Downloaded file: !DOWNLOAD_PATH!
-echo   Check the file, then press any key to continue...
-pause >nul
-echo.
 
 :: Delete existing program
 echo [4/6] Deleting old program...
@@ -74,6 +70,8 @@ if exist "!EXE_PATH!" (
     )
 )
 echo   Done
+echo   Press any key to continue...
+pause >nul
 echo.
 
 :: Move downloaded exe to target path
@@ -84,6 +82,8 @@ if not exist "!EXE_PATH!" (
     goto ERROR
 )
 echo   Done
+echo   Press any key to continue...
+pause >nul
 echo.
 
 :: Delete update folder
