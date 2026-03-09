@@ -21,6 +21,6 @@ rd /s /q "!BASE_DIR!\update" 2>nul
 :: Wait for filesystem to fully settle
 ping 127.0.0.1 -n 3 >nul
 
-:: Run the program
-start "" "!EXE_PATH!"
+:: Run the program via explorer (same as double-click, avoids Defender DLL block)
+explorer.exe "!EXE_PATH!"
 exit /b 0

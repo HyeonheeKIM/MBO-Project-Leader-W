@@ -43,10 +43,6 @@ set "DOWNLOAD_PATH=!UPDATE_DIR!\!EXE_NAME!"
 echo [2/7] Killing app (!EXE_NAME!)...
 taskkill /F /IM "!EXE_NAME!" >nul 2>&1
 ping 127.0.0.1 -n 4 >nul
-:: Clean orphaned _MEI* temp folders (taskkill /F skips PyInstaller cleanup)
-for /d %%D in ("%TEMP%\_MEI*") do (
-    rd /s /q "%%D" 2>nul
-)
 echo   Done
 echo.
 
