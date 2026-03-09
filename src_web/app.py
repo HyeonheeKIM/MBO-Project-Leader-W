@@ -1104,8 +1104,9 @@ class Api:
                         f.write(resp.read())
 
             # 2) update_config.txt 작성 (update.bat이 읽을 정보)
+            #    cmd.exe가 시스템 기본 인코딩(cp949)으로 읽으므로 맞춰 작성
             config_path = os.path.join(update_dir, 'update_config.txt')
-            with open(config_path, 'w', encoding='utf-8') as f:
+            with open(config_path, 'w', encoding='mbcs') as f:
                 f.write(exe_url + '\n')
                 f.write(sys.executable + '\n')
 
