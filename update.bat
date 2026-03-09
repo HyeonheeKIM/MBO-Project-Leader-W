@@ -24,16 +24,9 @@ if "!EXE_PATH!"=="" goto ERROR
 for %%F in ("!EXE_PATH!") do set "EXE_NAME=%%~nxF"
 set "DOWNLOAD_PATH=!UPDATE_DIR!\!EXE_NAME!"
 
-:: 앱 종료 대기 (최대 30초)
-set "WAIT_COUNT=0"
-:WAIT_LOOP
-tasklist /FI "IMAGENAME eq !EXE_NAME!" 2>nul | find /I "!EXE_NAME!" >nul
-if not errorlevel 1 (
-    set /a WAIT_COUNT+=1
-    if !WAIT_COUNT! GEQ 30 goto ERROR
-    ping 127.0.0.1 -n 2 >nul
-    goto WAIT_LOOP
-)
+:: 앱 강제 종료
+taskkill /F /IM "!EXE_NAME!" >nul 2>&1
+ping 127.0.0.1 -n 3 >nul
 
 :: 1. 최신 exe 다운로드 (update 폴더 안에)
 powershell -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { (New-Object Net.WebClient).DownloadFile('%EXE_URL%','%DOWNLOAD_PATH%'); 'OK' } catch { $_.Exception.Message }" > "!UPDATE_DIR!\dl_result.txt" 2>&1
