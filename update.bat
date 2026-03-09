@@ -29,10 +29,8 @@ taskkill /F /IM "!EXE_NAME!" >nul 2>&1
 ping 127.0.0.1 -n 3 >nul
 
 :: 1. 최신 exe 다운로드 (update 폴더 안에)
-powershell -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { (New-Object Net.WebClient).DownloadFile('%EXE_URL%','%DOWNLOAD_PATH%'); 'OK' } catch { $_.Exception.Message }" > "!UPDATE_DIR!\dl_result.txt" 2>&1
-set /p DL_RESULT=<"!UPDATE_DIR!\dl_result.txt"
-del "!UPDATE_DIR!\dl_result.txt" 2>nul
-if /I not "!DL_RESULT!"=="OK" goto ERROR
+curl -L -o "!DOWNLOAD_PATH!" "!EXE_URL!" --ssl-no-revoke -s
+if errorlevel 1 goto ERROR
 if not exist "!DOWNLOAD_PATH!" goto ERROR
 
 :: 2. 기존 프로그램 삭제
