@@ -1495,6 +1495,11 @@ function closeUpdateDialog() {
 async function doUpdate(exeUrl, latestVersion) {
     const body = document.getElementById('updateDialogBody');
     const footer = document.getElementById('updateDialogFooter');
+    // X 버튼 및 오버레이 클릭 닫기 비활성화
+    const closeBtn = document.querySelector('#updateOverlay .modal-close');
+    if (closeBtn) closeBtn.style.display = 'none';
+    const overlay = document.getElementById('updateOverlay');
+    if (overlay) overlay.onclick = null;
     if (body) {
         body.innerHTML = `
             <div style="text-align:center;padding:20px;">
