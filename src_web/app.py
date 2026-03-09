@@ -1113,14 +1113,16 @@ class Api:
             hta_path = os.path.join(update_dir, 'update_message.hta')
             subprocess.Popen(['mshta', hta_path], cwd=BASE_DIR)
 
-            # 4) update.bat 실행 (백그라운드, 앱 종료 대기 후 업데이트 진행)
+            # 4) update.bat 실행
             update_bat = os.path.join(BASE_DIR, 'update.bat')
-            CREATE_NO_WINDOW = 0x08000000
             CREATE_NEW_PROCESS_GROUP = 0x00000200
+            CREATE_NO_WINDOW = 0x08000000
+            DEBUG_UPDATE = False  # True: 콘솔 표시, False: 콘솔 숨김
+            flags = CREATE_NEW_PROCESS_GROUP if DEBUG_UPDATE else CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
             subprocess.Popen(
                 ['cmd', '/c', update_bat],
                 cwd=BASE_DIR,
-                creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+                creationflags=flags
             )
 
             return {'ok': True, 'update_dir': update_dir}
