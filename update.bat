@@ -70,8 +70,6 @@ if exist "!EXE_PATH!" (
     )
 )
 echo   Done
-echo   Press any key to continue...
-pause >nul
 echo.
 
 :: Move downloaded exe to target path
@@ -82,16 +80,11 @@ if not exist "!EXE_PATH!" (
     goto ERROR
 )
 echo   Done
-echo   Press any key to continue...
-pause >nul
 echo.
 
-:: Delete update folder
-rd /s /q "!UPDATE_DIR!" 2>nul
-
-:: Launch new program
+:: Launch via execute.bat
 echo [6/6] Launching new program...
-start "" "!EXE_PATH!"
+start "" "!BASE_DIR!\execute.bat"
 echo   Done
 echo.
 
