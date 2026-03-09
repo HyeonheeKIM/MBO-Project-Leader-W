@@ -98,12 +98,14 @@ if not exist "!EXE_PATH!" (
     echo   [FAIL] Move failed
     goto ERROR
 )
-:: Verify file size (new exe must be > 1MB)
+:: Verify file size - new exe must be larger than 1MB
 for %%A in ("!EXE_PATH!") do set "NEW_SIZE=%%~zA"
 if !NEW_SIZE! LSS 1000000 (
-    echo   [FAIL] File too small (!NEW_SIZE! bytes), possible corruption
+    echo   [FAIL] File too small: !NEW_SIZE! bytes
     goto ERROR
 )
+:: Remove Zone.Identifier (Mark of the Web) to prevent SmartScreen popup
+echo>nul 2>nul & del /f "!EXE_PATH!:Zone.Identifier" 2>nul
 echo   Done (!NEW_SIZE! bytes)
 echo.
 
