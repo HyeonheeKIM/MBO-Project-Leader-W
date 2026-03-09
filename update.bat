@@ -42,7 +42,11 @@ set "DOWNLOAD_PATH=!UPDATE_DIR!\!EXE_NAME!"
 :: Kill app
 echo [2/7] Killing app (!EXE_NAME!)...
 taskkill /F /IM "!EXE_NAME!" >nul 2>&1
-ping 127.0.0.1 -n 3 >nul
+ping 127.0.0.1 -n 4 >nul
+:: Clean orphaned _MEI* temp folders (taskkill /F skips PyInstaller cleanup)
+for /d %%D in ("%TEMP%\_MEI*") do (
+    rd /s /q "%%D" 2>nul
+)
 echo   Done
 echo.
 
@@ -94,8 +98,17 @@ if not exist "!EXE_PATH!" (
     echo   [FAIL] Move failed
     goto ERROR
 )
-echo   Done
+:: Verify file size (new exe must be > 1MB)
+for %%A in ("!EXE_PATH!") do set "NEW_SIZE=%%~zA"
+if !NEW_SIZE! LSS 1000000 (
+    echo   [FAIL] File too small (!NEW_SIZE! bytes), possible corruption
+    goto ERROR
+)
+echo   Done (!NEW_SIZE! bytes)
 echo.
+
+:: Flush filesystem before launch
+ping 127.0.0.1 -n 2 >nul
 
 :: Launch via execute.bat
 echo [7/7] Launching new program...
