@@ -580,6 +580,12 @@ async function renderDaily(main) {
             callApi('get_current_milestone', state.selectedProjectId, state.currentYear, selMonth),
         ]);
 
+        // 기록 데이터 로드
+        const [records, recordDates] = await Promise.all([
+            callApi('get_daily_records', state.selectedProjectId, state.selectedDate),
+            callApi('get_record_dates', state.selectedProjectId, yearMonth),
+        ]);
+
         const commentCounts = {};
         await Promise.all(tasks.map(async t => {
             try {
@@ -602,6 +608,7 @@ async function renderDaily(main) {
                 <div class="header-actions">
                     ${yearSelectorHtml()}
                     <button class="btn btn-purple" onclick="openRecurringManager()" title="반복 태스크 관리">🔄 반복</button>
+                    <button class="btn btn-orange" onclick="openRecordDialog()" title="기록 추가">📋 기록</button>
                     <button class="btn btn-green" onclick="openTaskDialog()">+ 태스크 추가</button>
                 </div>
             </div>
@@ -610,8 +617,40 @@ async function renderDaily(main) {
             </div>
             ${msInfo}
             <div class="daily-layout">
-                <div class="calendar-card">
-                    ${renderCalendar(state.calendarYear, state.calendarMonth, state.selectedDate, taskDates)}
+                <div class="calendar-side">
+                    <div class="calendar-card">
+                        ${renderCalendar(state.calendarYear, state.calendarMonth, state.selectedDate, taskDates, recordDates)}
+                    </div>
+                    <div class="records-section">
+                        <div class="records-header">
+                            <span class="records-title">📋 ${state.selectedDate} 기록</span>
+                            <button class="btn btn-sm btn-orange" onclick="openRecordDialog()" title="기록 추가">+</button>
+                        </div>
+                        ${records.length === 0
+                            ? '<div class="records-empty">기록이 없습니다.</div>'
+                            : records.map(rec => `
+                                <div class="record-group">
+                                    <div class="record-group-header">
+                                        <span class="record-group-title">${escHtml(rec.title)}</span>
+                                        <div class="record-group-actions">
+                                            <button class="record-add-item-btn" onclick="openAddRecordItemDialog(${rec.id})" title="항목 추가">➕</button>
+                                            <button class="record-delete-btn" onclick="deleteDailyRecord(${rec.id})" title="기록 삭제">🗑️</button>
+                                        </div>
+                                    </div>
+                                    <div class="record-items">
+                                        ${rec.items.length === 0
+                                            ? '<div class="record-item-empty">항목이 없습니다.</div>'
+                                            : rec.items.map(item => `
+                                                <div class="record-item ${item.is_checked ? 'checked' : ''}">
+                                                    <input type="checkbox" class="record-checkbox" ${item.is_checked ? 'checked' : ''} onchange="toggleRecordItem(${item.id}, this.checked)">
+                                                    <span class="record-item-text ${item.is_checked ? 'done' : ''}">${escHtml(item.content)}</span>
+                                                    <button class="record-item-delete" onclick="deleteRecordItem(${item.id})" title="삭제">✕</button>
+                                                </div>
+                                            `).join('')}
+                                    </div>
+                                </div>
+                            `).join('')}
+                    </div>
                 </div>
                 <div class="task-list-card">
                     <div class="card-title">📝 ${state.selectedDate} 태스크</div>
@@ -643,7 +682,8 @@ async function renderDaily(main) {
     }
 }
 
-function renderCalendar(year, month, selectedDate, taskDates) {
+function renderCalendar(year, month, selectedDate, taskDates, recordDates) {
+    recordDates = recordDates || [];
     const today = new Date().toISOString().split('T')[0];
     const daysInMonth = new Date(year, month, 0).getDate();
     const firstDay = new Date(year, month - 1, 1).getDay();
@@ -669,6 +709,7 @@ function renderCalendar(year, month, selectedDate, taskDates) {
         const isToday = dateStr === today;
         const isSelected = dateStr === selectedDate;
         const hasTask = taskDates.includes(dateStr);
+        const hasRecord = recordDates.includes(dateStr);
         const dayOfWeek = (firstDay + d - 1) % 7;
         const isSun = dayOfWeek === 0;
 
@@ -676,6 +717,7 @@ function renderCalendar(year, month, selectedDate, taskDates) {
         if (isToday) cls += ' today';
         if (isSelected) cls += ' selected';
         if (hasTask) cls += ' has-task';
+        if (hasRecord) cls += ' has-record';
         if (isSun && !isSelected) cls += ' sun';
 
         html += `<div class="${cls}" onclick="selectDate('${dateStr}')">${d}</div>`;
@@ -1286,6 +1328,115 @@ async function deleteComment(cid, tid) {
     try {
         await callApi('delete_task_comment', cid);
         openTaskComments(tid);
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+// =================================================================
+// Feature: Daily Records (기록)
+// =================================================================
+let _recordItemCount = 1;
+
+function openRecordDialog() {
+    if (!state.selectedProjectId) { showToast('프로젝트를 먼저 선택하세요.', 'error'); return; }
+    _recordItemCount = 1;
+    const html = `
+        <div class="form-group"><label class="form-label">기록 제목 *</label><input class="form-input" id="fRecordTitle" placeholder="예: 회의 메모, 체크리스트 등"></div>
+        <div class="form-group">
+            <label class="form-label">항목 (체크리스트)</label>
+            <div id="recordItemsContainer">
+                <div class="record-item-input-row">
+                    <input class="form-input" placeholder="항목 입력..." data-record-item>
+                    <button class="btn btn-sm btn-red" onclick="this.parentElement.remove()" title="삭제">✕</button>
+                </div>
+            </div>
+            <button class="btn btn-sm btn-gray" onclick="addRecordItemInput()" style="margin-top:6px">+ 항목 추가</button>
+        </div>
+        <div class="form-group"><label class="form-label">날짜</label><input class="form-input" id="fRecordDate" type="date" value="${state.selectedDate}"></div>
+        <div class="form-actions">
+            <button class="btn btn-gray" onclick="closeModal()">취소</button>
+            <button class="btn btn-orange" onclick="saveRecord()">기록 저장</button>
+        </div>
+    `;
+    openModal('📋 새 기록 추가', html);
+}
+
+function addRecordItemInput() {
+    const container = document.getElementById('recordItemsContainer');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'record-item-input-row';
+    row.innerHTML = `<input class="form-input" placeholder="항목 입력..." data-record-item><button class="btn btn-sm btn-red" onclick="this.parentElement.remove()" title="삭제">✕</button>`;
+    container.appendChild(row);
+    row.querySelector('input').focus();
+}
+
+async function saveRecord() {
+    const title = document.getElementById('fRecordTitle').value.trim();
+    if (!title) { showToast('제목을 입력하세요.', 'error'); return; }
+    const recordDate = document.getElementById('fRecordDate').value;
+    if (!recordDate) { showToast('날짜를 선택하세요.', 'error'); return; }
+    const inputs = document.querySelectorAll('[data-record-item]');
+    const items = [];
+    inputs.forEach(inp => {
+        const content = inp.value.trim();
+        if (content) items.push({ content, is_checked: 0 });
+    });
+    try {
+        await callApi('create_daily_record', {
+            project_id: state.selectedProjectId,
+            record_date: recordDate,
+            title,
+            items
+        });
+        showToast('기록이 추가되었습니다.');
+        state.selectedDate = recordDate;
+        closeModal();
+        navigate('daily');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openAddRecordItemDialog(recordId) {
+    const html = `
+        <div class="form-group"><label class="form-label">새 항목</label><input class="form-input" id="fNewRecordItem" placeholder="항목 내용 입력..." onkeydown="if(event.key==='Enter')saveRecordItem(${recordId})"></div>
+        <div class="form-actions">
+            <button class="btn btn-gray" onclick="closeModal()">취소</button>
+            <button class="btn btn-orange" onclick="saveRecordItem(${recordId})">추가</button>
+        </div>
+    `;
+    openModal('➕ 항목 추가', html);
+}
+
+async function saveRecordItem(recordId) {
+    const input = document.getElementById('fNewRecordItem');
+    const content = input.value.trim();
+    if (!content) { showToast('내용을 입력하세요.', 'error'); return; }
+    try {
+        await callApi('add_record_item', recordId, content);
+        showToast('항목이 추가되었습니다.');
+        closeModal();
+        navigate('daily');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function toggleRecordItem(itemId, checked) {
+    try {
+        await callApi('toggle_record_item', itemId, checked ? 1 : 0);
+    } catch (e) { showToast(e.message, 'error'); navigate('daily'); }
+}
+
+async function deleteRecordItem(itemId) {
+    try {
+        await callApi('delete_record_item', itemId);
+        navigate('daily');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteDailyRecord(recordId) {
+    if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+    try {
+        await callApi('delete_daily_record', recordId);
+        showToast('기록이 삭제되었습니다.');
+        navigate('daily');
     } catch (e) { showToast(e.message, 'error'); }
 }
 

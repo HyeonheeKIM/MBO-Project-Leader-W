@@ -161,6 +161,28 @@ def init_db():
             FOREIGN KEY (task_id) REFERENCES daily_tasks(id) ON DELETE CASCADE
         )
     """)
+    # 일별 기록 (메모/체크리스트)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS daily_records (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id  INTEGER NOT NULL,
+            record_date TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS daily_record_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id   INTEGER NOT NULL,
+            content     TEXT NOT NULL,
+            is_checked  INTEGER DEFAULT 0,
+            sort_order  INTEGER DEFAULT 0,
+            created_at  TEXT DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (record_id) REFERENCES daily_records(id) ON DELETE CASCADE
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -841,6 +863,103 @@ class Api:
     def delete_task_comment(self, cid):
         conn = get_db()
         conn.execute("DELETE FROM task_comments WHERE id=?", (cid,))
+        conn.commit()
+        conn.close()
+        return {'ok': True}
+
+    # ---- Daily Records (기록) ----
+    def get_daily_records(self, project_id, record_date):
+        """해당 날짜의 기록(제목+항목) 목록 조회"""
+        conn = get_db()
+        records = dict_rows(conn.execute(
+            "SELECT * FROM daily_records WHERE project_id=? AND record_date=? ORDER BY created_at DESC",
+            (project_id, record_date)).fetchall())
+        for rec in records:
+            rec['items'] = dict_rows(conn.execute(
+                "SELECT * FROM daily_record_items WHERE record_id=? ORDER BY sort_order, id",
+                (rec['id'],)).fetchall())
+        conn.close()
+        return records
+
+    def get_record_dates(self, project_id, year_month=''):
+        """기록이 있는 날짜 목록"""
+        conn = get_db()
+        if year_month:
+            rows = conn.execute(
+                "SELECT DISTINCT record_date FROM daily_records WHERE project_id=? AND record_date LIKE ?",
+                (project_id, f"{year_month}-%")).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT DISTINCT record_date FROM daily_records WHERE project_id=?",
+                (project_id,)).fetchall()
+        conn.close()
+        return [r['record_date'] for r in rows]
+
+    def create_daily_record(self, data):
+        """새 기록 생성 (제목 + 초기 항목들)"""
+        title = data.get('title', '').strip()
+        if not title:
+            return {'error': '제목을 입력하세요'}
+        record_date = data.get('record_date', date.today().isoformat())
+        items = data.get('items', [])
+        conn = get_db()
+        cur = conn.execute(
+            "INSERT INTO daily_records (project_id, record_date, title) VALUES (?,?,?)",
+            (data['project_id'], record_date, title))
+        record_id = cur.lastrowid
+        for i, item in enumerate(items):
+            content = item.get('content', '').strip()
+            if content:
+                conn.execute(
+                    "INSERT INTO daily_record_items (record_id, content, is_checked, sort_order) VALUES (?,?,?,?)",
+                    (record_id, content, item.get('is_checked', 0), i))
+        conn.commit()
+        rec = dict_row(conn.execute("SELECT * FROM daily_records WHERE id=?", (record_id,)).fetchone())
+        rec['items'] = dict_rows(conn.execute(
+            "SELECT * FROM daily_record_items WHERE record_id=? ORDER BY sort_order, id",
+            (record_id,)).fetchall())
+        conn.close()
+        return rec
+
+    def add_record_item(self, record_id, content):
+        """기록에 항목 추가"""
+        content = content.strip()
+        if not content:
+            return {'error': '내용을 입력하세요'}
+        conn = get_db()
+        max_order = conn.execute(
+            "SELECT COALESCE(MAX(sort_order),0) FROM daily_record_items WHERE record_id=?",
+            (record_id,)).fetchone()[0]
+        cur = conn.execute(
+            "INSERT INTO daily_record_items (record_id, content, sort_order) VALUES (?,?,?)",
+            (record_id, content, max_order + 1))
+        conn.commit()
+        item = dict_row(conn.execute("SELECT * FROM daily_record_items WHERE id=?", (cur.lastrowid,)).fetchone())
+        conn.close()
+        return item
+
+    def toggle_record_item(self, item_id, is_checked):
+        """기록 항목 체크/해제"""
+        conn = get_db()
+        conn.execute("UPDATE daily_record_items SET is_checked=? WHERE id=?", (is_checked, item_id))
+        conn.commit()
+        item = dict_row(conn.execute("SELECT * FROM daily_record_items WHERE id=?", (item_id,)).fetchone())
+        conn.close()
+        return item
+
+    def delete_record_item(self, item_id):
+        """기록 항목 삭제"""
+        conn = get_db()
+        conn.execute("DELETE FROM daily_record_items WHERE id=?", (item_id,))
+        conn.commit()
+        conn.close()
+        return {'ok': True}
+
+    def delete_daily_record(self, record_id):
+        """기록 전체 삭제 (항목 포함)"""
+        conn = get_db()
+        conn.execute("DELETE FROM daily_record_items WHERE record_id=?", (record_id,))
+        conn.execute("DELETE FROM daily_records WHERE id=?", (record_id,))
         conn.commit()
         conn.close()
         return {'ok': True}

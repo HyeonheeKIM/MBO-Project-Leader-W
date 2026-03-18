@@ -330,6 +330,8 @@ body::after {
     color: var(--white);
 }
 .btn-gray:hover { background: rgba(71,85,105,0.85); }
+.btn-orange { background: linear-gradient(135deg, #f59e0b, #f97316); color: var(--white); }
+.btn-orange:hover { background: linear-gradient(135deg, #d97706, #ea580c); }
 .btn-outline {
     background: rgba(255,255,255,0.4);
     backdrop-filter: blur(8px);
@@ -850,6 +852,13 @@ body::after {
     gap: 20px;
 }
 
+.calendar-side {
+    width: 310px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 .calendar-card {
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
@@ -857,7 +866,7 @@ body::after {
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     padding: 18px;
-    width: 310px;
+    width: 100%;
     box-shadow: var(--glass-shadow), var(--glass-inset);
 }
 
@@ -2029,6 +2038,163 @@ body::after {
     flex: 1;
 }
 
+/* ===== Daily Records (기록) ===== */
+.records-section {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+}
+.records-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.records-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+}
+.records-empty {
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 8px 0;
+    text-align: center;
+}
+.record-group {
+    background: rgba(255,255,255,0.25);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+.record-group:last-child {
+    margin-bottom: 0;
+}
+.record-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.3);
+}
+.record-group-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+}
+.record-group-actions {
+    display: flex;
+    gap: 4px;
+}
+.record-add-item-btn,
+.record-delete-btn {
+    background: none;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 6px;
+    transition: var(--transition);
+}
+.record-add-item-btn:hover {
+    background: rgba(245,158,11,0.15);
+}
+.record-delete-btn:hover {
+    background: rgba(239,68,68,0.15);
+}
+.record-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.record-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    transition: var(--transition);
+}
+.record-item:hover {
+    background: rgba(255,255,255,0.3);
+}
+.record-item.checked {
+    opacity: 0.7;
+}
+.record-checkbox {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent-orange, #f59e0b);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.record-item-text {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.4;
+}
+.record-item-text.done {
+    text-decoration: line-through;
+    color: var(--text-dark);
+}
+.record-item-delete {
+    background: none;
+    border: none;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-dark);
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: var(--transition);
+}
+.record-item:hover .record-item-delete {
+    opacity: 1;
+}
+.record-item-delete:hover {
+    color: var(--accent-red);
+    background: rgba(239,68,68,0.1);
+}
+.record-item-empty {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 4px 0;
+}
+.record-item-input-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.record-item-input-row .form-input {
+    flex: 1;
+}
+.cal-day.has-record::before {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    left: calc(50% + 5px);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #f59e0b;
+    box-shadow: 0 0 4px rgba(245,158,11,0.4);
+}
+.cal-day.has-task.has-record::after {
+    left: calc(50% - 5px);
+}
+.cal-day.selected.has-record::before {
+    background: var(--white);
+    box-shadow: 0 0 4px rgba(255,255,255,0.6);
+}
+
 /* ===== Tracking Charts Row ===== */
 .tracking-charts-row {
     display: grid;
@@ -2202,6 +2368,7 @@ body::after {
     .main-content { margin-left: 0; padding: 16px; }
     .monthly-grid { grid-template-columns: repeat(2, 1fr); }
     .daily-layout { grid-template-columns: 1fr; }
+    .calendar-side { width: 100%; }
     .calendar-card { width: 100%; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .tracking-stats { grid-template-columns: repeat(3, 1fr); }
