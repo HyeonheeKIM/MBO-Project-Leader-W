@@ -168,6 +168,7 @@ async function navigate(page) {
         case 'tracking': await renderTracking(main); break;
         case 'gantt': await renderGantt(main); break;
         case 'years': await renderYears(main); break;
+        case 'archive': await renderArchive(main); break;
         default: await renderDashboard(main);
     }
 }
@@ -1443,6 +1444,184 @@ async function deleteDailyRecord(recordId) {
 // =================================================================
 // Feature: Weekly Trend & Project Comparison Charts
 // =================================================================
+// =================================================================
+// PAGE: Archive
+// =================================================================
+const ARCHIVE_CATEGORIES = [
+    { key: '💡 아이디어', icon: '💡', label: '아이디어' },
+    { key: '📎 참고자료', icon: '📎', label: '참고자료' },
+    { key: '📝 메모', icon: '📝', label: '메모' },
+    { key: '🎯 교훈', icon: '🎯', label: '교훈' },
+    { key: '⚠️ 중요결정', icon: '⚠️', label: '중요결정' },
+];
+
+let archiveFilter = '';
+let archiveSearch = '';
+
+async function renderArchive(main) {
+    const items = await callApi('get_archives', archiveFilter, archiveSearch);
+
+    const filterTabs = `<div class="archive-filter-tabs">
+        <button class="archive-tab ${archiveFilter === '' ? 'active' : ''}" onclick="setArchiveFilter('')">전체</button>
+        ${ARCHIVE_CATEGORIES.map(c =>
+            `<button class="archive-tab ${archiveFilter === c.key ? 'active' : ''}" onclick="setArchiveFilter('${c.key}')">${c.icon} ${c.label}</button>`
+        ).join('')}
+    </div>`;
+
+    const pinned = items.filter(i => i.is_pinned);
+    const normal = items.filter(i => !i.is_pinned);
+
+    const renderCard = (item) => {
+        const catObj = ARCHIVE_CATEGORIES.find(c => c.key === item.category);
+        const catIcon = catObj ? catObj.icon : '📝';
+        const tags = item.tags ? item.tags.split(',').map(t => t.trim()).filter(Boolean).map(t =>
+            `<span class="archive-tag">#${escHtml(t)}</span>`
+        ).join('') : '';
+        const date = item.updated_at ? item.updated_at.split(' ')[0] : '';
+        return `<div class="archive-card ${item.is_pinned ? 'pinned' : ''}">
+            <div class="archive-card-header">
+                <span class="archive-cat-icon">${catIcon}</span>
+                <span class="archive-card-title">${escHtml(item.title)}</span>
+                <span class="archive-card-date">${date}</span>
+            </div>
+            ${item.content ? `<div class="archive-card-content">${escHtml(item.content)}</div>` : ''}
+            <div class="archive-card-footer">
+                <div class="archive-tags">${tags}</div>
+                <div class="archive-actions">
+                    <button class="btn-icon" onclick="toggleArchivePin(${item.id})" title="${item.is_pinned ? '고정 해제' : '고정'}">${item.is_pinned ? '📌' : '📍'}</button>
+                    <button class="btn-icon" onclick="openEditArchiveDialog(${item.id})" title="수정">✏️</button>
+                    <button class="btn-icon" onclick="deleteArchive(${item.id})" title="삭제">🗑️</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    main.innerHTML = `
+        <div class="page-header">
+            <h2>📦 아카이브</h2>
+            <div class="page-actions">
+                <div class="archive-search-box">
+                    <input type="text" id="archiveSearchInput" placeholder="검색 (제목, 내용, 태그)" value="${escAttr(archiveSearch)}" onkeydown="if(event.key==='Enter') doArchiveSearch()">
+                    <button class="btn btn-sm" onclick="doArchiveSearch()">🔍</button>
+                    ${archiveSearch ? '<button class="btn btn-sm" onclick="clearArchiveSearch()">✕</button>' : ''}
+                </div>
+            </div>
+        </div>
+        <div style="margin-bottom:12px;">
+            <button class="btn btn-primary" onclick="openAddArchiveDialog()">+ 새 항목</button>
+        </div>
+        ${filterTabs}
+        ${pinned.length > 0 ? `
+            <div class="archive-section-label">📌 고정된 항목</div>
+            <div class="archive-grid">${pinned.map(renderCard).join('')}</div>
+        ` : ''}
+        ${normal.length > 0 ? `
+            <div class="archive-section-label">일반 항목</div>
+            <div class="archive-grid">${normal.map(renderCard).join('')}</div>
+        ` : ''}
+        ${items.length === 0 ? `<div class="empty-state"><div class="empty-icon">📦</div>아카이브가 비어있습니다.<br>중요한 메모, 아이디어, 교훈 등을 기록하세요.</div>` : ''}
+    `;
+}
+
+function setArchiveFilter(cat) {
+    archiveFilter = cat;
+    navigate('archive');
+}
+
+function doArchiveSearch() {
+    archiveSearch = document.getElementById('archiveSearchInput').value.trim();
+    navigate('archive');
+}
+
+function clearArchiveSearch() {
+    archiveSearch = '';
+    navigate('archive');
+}
+
+function _archiveFormHtml(data = {}) {
+    const catOptions = ARCHIVE_CATEGORIES.map(c =>
+        `<option value="${c.key}" ${data.category === c.key ? 'selected' : ''}>${c.icon} ${c.label}</option>`
+    ).join('');
+    return `
+        <div class="form-group">
+            <label class="form-label">카테고리</label>
+            <div class="archive-cat-selector">
+                ${ARCHIVE_CATEGORIES.map(c =>
+                    `<button type="button" class="archive-cat-btn ${data.category === c.key ? 'active' : ''}" data-cat="${c.key}" onclick="document.querySelectorAll('.archive-cat-btn').forEach(b=>b.classList.remove('active'));this.classList.add('active');document.getElementById('archiveCategory').value=this.dataset.cat">
+                        <span class="archive-cat-btn-icon">${c.icon}</span>
+                        <span class="archive-cat-btn-label">${c.label}</span>
+                    </button>`
+                ).join('')}
+            </div>
+            <input type="hidden" id="archiveCategory" value="${escAttr(data.category || ARCHIVE_CATEGORIES[0].key)}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">제목</label>
+            <input type="text" class="form-input" id="archiveTitle" value="${escAttr(data.title || '')}" placeholder="기억할 내용의 제목을 입력하세요">
+        </div>
+        <div class="form-group">
+            <label class="form-label">내용</label>
+            <textarea class="form-textarea" id="archiveContent" rows="6" placeholder="상세 내용을 자유롭게 작성하세요">${escHtml(data.content || '')}</textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">태그</label>
+            <input type="text" class="form-input" id="archiveTags" value="${escAttr(data.tags || '')}" placeholder="쉼표로 구분 (예: 인프라, 배포, 중요)">
+            ${data.tags ? `<div class="archive-tag-preview">${data.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => `<span class="archive-tag">#${escHtml(t)}</span>`).join('')}</div>` : ''}
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+            <button class="btn btn-primary" onclick="${data.id ? `updateArchive(${data.id})` : 'saveArchive()'}">저장</button>
+        </div>
+    `;
+}
+
+function openAddArchiveDialog() {
+    openModal('📦 새 아카이브 항목', _archiveFormHtml());
+}
+
+async function openEditArchiveDialog(aid) {
+    const items = await callApi('get_archives');
+    const item = items.find(i => i.id === aid);
+    if (!item) return showToast('항목을 찾을 수 없습니다', 'error');
+    openModal('📦 아카이브 수정', _archiveFormHtml(item));
+}
+
+async function saveArchive() {
+    const category = document.getElementById('archiveCategory').value;
+    const title = document.getElementById('archiveTitle').value.trim();
+    const content = document.getElementById('archiveContent').value.trim();
+    const tags = document.getElementById('archiveTags').value.trim();
+    if (!title) return showToast('제목을 입력하세요', 'error');
+    await callApi('add_archive', category, title, content, tags);
+    closeModal();
+    showToast('아카이브에 저장되었습니다');
+    navigate('archive');
+}
+
+async function updateArchive(aid) {
+    const category = document.getElementById('archiveCategory').value;
+    const title = document.getElementById('archiveTitle').value.trim();
+    const content = document.getElementById('archiveContent').value.trim();
+    const tags = document.getElementById('archiveTags').value.trim();
+    if (!title) return showToast('제목을 입력하세요', 'error');
+    await callApi('update_archive', aid, category, title, content, tags);
+    closeModal();
+    showToast('수정되었습니다');
+    navigate('archive');
+}
+
+async function toggleArchivePin(aid) {
+    await callApi('toggle_archive_pin', aid);
+    navigate('archive');
+}
+
+async function deleteArchive(aid) {
+    if (!confirm('이 항목을 삭제하시겠습니까?')) return;
+    await callApi('delete_archive', aid);
+    showToast('삭제되었습니다');
+    navigate('archive');
+}
+
 function renderTrendChart(data) {
     if (!data || data.length === 0) return '<div style="font-size:12px;color:var(--text-dim)">데이터 없음</div>';
     const maxVal = Math.max(...data.map(d => d.total), 1);
@@ -1613,7 +1792,7 @@ function showUpdateDialog(info) {
                 <h3>🔄 업데이트 안내</h3>
                 <button class="modal-close" onclick="closeUpdateDialog()">&times;</button>
             </div>
-            <div class="modal-body" id="updateDialogBody">
+            <div class="modal-body">
                 <p style="margin-bottom:14px;font-size:0.95rem;color:var(--text);">새로운 버전이 출시되었습니다.</p>
                 <div style="background:var(--glass-bg-subtle);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-dim);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;">
                     <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
@@ -1626,12 +1805,12 @@ function showUpdateDialog(info) {
                     </div>
                 </div>
                 <p style="color:var(--text-dim);font-size:0.83rem;margin-bottom:0;">
-                    업데이트를 진행하면 프로그램이 재시작됩니다.
+                    다운로드 페이지에서 최신 버전을 직접 받으실 수 있습니다.
                 </p>
             </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;padding:6px 26px 22px;" id="updateDialogFooter">
+            <div style="display:flex;gap:8px;justify-content:flex-end;padding:6px 26px 22px;">
                 <button class="btn" onclick="closeUpdateDialog()">나중에</button>
-                <button class="btn btn-blue" onclick="doUpdate('${info.exe_url}','${info.latest_version}')">업데이트</button>
+                <button class="btn btn-blue" onclick="openReleasePage('${info.release_url}')">다운로드 페이지 열기</button>
             </div>
         </div>
     `;
@@ -1643,57 +1822,9 @@ function closeUpdateDialog() {
     if (overlay) overlay.remove();
 }
 
-async function doUpdate(exeUrl, latestVersion) {
-    const body = document.getElementById('updateDialogBody');
-    const footer = document.getElementById('updateDialogFooter');
-    // X 버튼 및 오버레이 클릭 닫기 비활성화
-    const closeBtn = document.querySelector('#updateOverlay .modal-close');
-    if (closeBtn) closeBtn.style.display = 'none';
-    const overlay = document.getElementById('updateOverlay');
-    if (overlay) overlay.onclick = null;
-    if (body) {
-        body.innerHTML = `
-            <div style="text-align:center;padding:20px;">
-                <div class="spinner" style="margin:0 auto 16px;"></div>
-                <p>\uC5C5\uB370\uC774\uD2B8 \uC900\uBE44 \uC911...</p>
-            </div>
-        `;
-    }
-    if (footer) footer.style.display = 'none';
-
-    try {
-        const result = await pyapi.start_update(exeUrl, latestVersion);
-        if (result && result.error) {
-            if (body) {
-                body.innerHTML = `
-                    <div style="text-align:center;padding:20px;">
-                        <div style="font-size:2rem;margin-bottom:12px;">\u26A0\uFE0F</div>
-                        <p>\uC5C5\uB370\uC774\uD2B8 \uC2E4\uD328</p>
-                        <p style="color:#ef4444;font-size:0.85rem;">${result.error}</p>
-                    </div>
-                `;
-            }
-            if (footer) {
-                footer.style.display = 'flex';
-                footer.innerHTML = `<button class="btn" onclick="closeUpdateDialog()">\uB2EB\uAE30</button>`;
-            }
-        } else if (result && result.ok) {
-            // \uC5C5\uB370\uC774\uD2B8 \uC900\uBE44 \uC644\uB8CC — \uC571 \uC885\uB8CC
-            if (body) {
-                body.innerHTML = `
-                    <div style="text-align:center;padding:20px;">
-                        <div style="font-size:2rem;margin-bottom:12px;">\uD83D\uDD04</div>
-                        <p>\uC5C5\uB370\uC774\uD2B8\uB97C \uC704\uD574 \uC571\uC744 \uC885\uB8CC\uD569\uB2C8\uB2E4...</p>
-                    </div>
-                `;
-            }
-            setTimeout(async () => {
-                try { await pyapi.close_app(); } catch(e) {}
-            }, 1500);
-        }
-    } catch (e) {
-        console.error('Update failed:', e);
-    }
+function openReleasePage(url) {
+    window.open(url, '_blank');
+    closeUpdateDialog();
 }
 
 // ===== Init =====

@@ -161,6 +161,19 @@ def init_db():
             FOREIGN KEY (task_id) REFERENCES daily_tasks(id) ON DELETE CASCADE
         )
     """)
+    # 아카이브
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS archives (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            category    TEXT NOT NULL DEFAULT '메모',
+            title       TEXT NOT NULL,
+            content     TEXT DEFAULT '',
+            tags        TEXT DEFAULT '',
+            is_pinned   INTEGER DEFAULT 0,
+            created_at  TEXT DEFAULT (datetime('now','localtime')),
+            updated_at  TEXT DEFAULT (datetime('now','localtime'))
+        )
+    """)
     # 일별 기록 (메모/체크리스트)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS daily_records (
@@ -1168,95 +1181,80 @@ class Api:
 
     # ---- Update Check ----
     def check_for_update(self):
-        """GitHub Releases API로 최신 버전 확인 (경량)"""
+        """GitHub의 version.dat과 비교하여 새 버전 여부 확인 (수동 다운로드 방식)"""
         import urllib.request
         try:
-            url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-            req = urllib.request.Request(url, headers={
-                'User-Agent': 'MBO-Project-Leader',
-                'Accept': 'application/vnd.github.v3+json',
-            })
+            url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/src_web/version.dat?t={int(__import__('time').time())}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'MBO-Project-Leader'})
             with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-            tag = data.get('tag_name', '')
-            latest_version = tag.lstrip('v')
+                latest_version = resp.read().decode('utf-8').strip().split('\n')[0].strip()
             current_version = __version__
-            if latest_version > current_version:
-                # 릴리스 에셋에서 exe URL 찾기
-                exe_url = ''
-                for asset in data.get('assets', []):
-                    if asset['name'].lower().endswith('.exe'):
-                        exe_url = asset['browser_download_url']
-                        break
-                if not exe_url:
-                    exe_url = f"https://github.com/{GITHUB_REPO}/releases/latest/download/MBO_Project_Leader.exe"
+            if latest_version != current_version:
+                release_page = f"https://github.com/{GITHUB_REPO}/releases/latest"
                 return {
                     'needs_update': True,
                     'current_version': current_version,
                     'latest_version': latest_version,
-                    'exe_url': exe_url,
+                    'release_url': release_page,
                 }
             return {'needs_update': False}
         except Exception:
             return {'needs_update': False}
 
-    def start_update(self, exe_url, latest_version):
-        """업데이트 폴더 생성, 파일 다운로드, config 작성, HTA·update.bat 실행"""
-        import urllib.request
-        import subprocess
-        if not getattr(sys, 'frozen', False):
-            return {'error': '개발 모드에서는 업데이트를 지원하지 않습니다.'}
-        try:
-            update_dir = os.path.join(BASE_DIR, 'update')
-            os.makedirs(update_dir, exist_ok=True)
+    # ---- Archive ----
+    def get_archives(self, category='', search=''):
+        conn = get_db()
+        sql = "SELECT * FROM archives WHERE 1=1"
+        params = []
+        if category:
+            sql += " AND category = ?"
+            params.append(category)
+        if search:
+            like = f"%{search}%"
+            sql += " AND (title LIKE ? OR content LIKE ? OR tags LIKE ?)"
+            params.extend([like, like, like])
+        sql += " ORDER BY is_pinned DESC, updated_at DESC"
+        rows = dict_rows(conn.execute(sql, params).fetchall())
+        conn.close()
+        return rows
 
-            # 1) update.bat, update_message.hta 다운로드
-            base_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main"
-            files = [
-                (f"{base_url}/update.bat", os.path.join(BASE_DIR, 'update.bat')),
-                (f"{base_url}/update_message.hta", os.path.join(update_dir, 'update_message.hta')),
-            ]
-            for url, dest in files:
-                req = urllib.request.Request(url, headers={'User-Agent': 'MBO-Project-Leader'})
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    with open(dest, 'wb') as f:
-                        f.write(resp.read())
-
-            # 2) update_config.txt 작성 (update.bat이 읽을 정보)
-            #    cmd.exe가 시스템 기본 인코딩(cp949)으로 읽으므로 맞춰 작성
-            config_path = os.path.join(update_dir, 'update_config.txt')
-            with open(config_path, 'w', encoding='mbcs') as f:
-                f.write(exe_url + '\n')
-                f.write(sys.executable + '\n')
-
-            # 3) update_message.hta 실행 (업데이트 중 안내 UI)
-            hta_path = os.path.join(update_dir, 'update_message.hta')
-            subprocess.Popen(['mshta', hta_path], cwd=BASE_DIR)
-
-            # 4) update.bat 실행
-            update_bat = os.path.join(BASE_DIR, 'update.bat')
-            CREATE_NEW_PROCESS_GROUP = 0x00000200
-            CREATE_NO_WINDOW = 0x08000000
-            DEBUG_UPDATE = True  # True: 콘솔 표시, False: 콘솔 숨김
-            flags = CREATE_NEW_PROCESS_GROUP if DEBUG_UPDATE else CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-            subprocess.Popen(
-                ['cmd', '/c', update_bat],
-                cwd=BASE_DIR,
-                creationflags=flags
-            )
-
-            return {'ok': True, 'update_dir': update_dir}
-        except Exception as e:
-            return {'error': str(e)}
-
-    def close_app(self):
-        """앱 종료 (업데이트 진행을 위해)"""
-        def _close():
-            import time
-            time.sleep(0.5)
-            webview.windows[0].destroy()
-        threading.Thread(target=_close, daemon=True).start()
+    def add_archive(self, category, title, content, tags):
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO archives (category, title, content, tags) VALUES (?, ?, ?, ?)",
+            (category, title, content, tags)
+        )
+        conn.commit()
+        conn.close()
         return {'ok': True}
+
+    def update_archive(self, aid, category, title, content, tags):
+        conn = get_db()
+        conn.execute(
+            "UPDATE archives SET category=?, title=?, content=?, tags=?, updated_at=datetime('now','localtime') WHERE id=?",
+            (category, title, content, tags, aid)
+        )
+        conn.commit()
+        conn.close()
+        return {'ok': True}
+
+    def toggle_archive_pin(self, aid):
+        conn = get_db()
+        conn.execute(
+            "UPDATE archives SET is_pinned = CASE WHEN is_pinned=1 THEN 0 ELSE 1 END, updated_at=datetime('now','localtime') WHERE id=?",
+            (aid,)
+        )
+        conn.commit()
+        conn.close()
+        return {'ok': True}
+
+    def delete_archive(self, aid):
+        conn = get_db()
+        conn.execute("DELETE FROM archives WHERE id=?", (aid,))
+        conn.commit()
+        conn.close()
+        return {'ok': True}
+
 
 
 # ============================================================
